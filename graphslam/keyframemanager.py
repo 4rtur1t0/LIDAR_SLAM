@@ -114,11 +114,11 @@ class KeyFrame():
     def __init__(self, directory, scan_time):
         self.transform = None
         # voxel sizes
-        self.voxel_size = 0.05
-        self.voxel_size_normals = 5*self.voxel_size
-        self.voxel_size_fpfh = 5*self.voxel_size
-        self.icp_threshold = 5
-        self.fpfh_threshold = 5
+        self.voxel_size = 0.1
+        self.voxel_size_normals = 3*self.voxel_size
+        self.voxel_size_fpfh = 3*self.voxel_size
+        self.icp_threshold = 3
+        self.fpfh_threshold = 2
         filename = directory + '/robot0/lidar/data/' + str(scan_time) + '.pcd'
         self.pointcloud = o3d.io.read_point_cloud(filename)
         # downsample pointcloud and save to pointcloud in keyframe
@@ -147,8 +147,8 @@ class KeyFrame():
             other.pointcloud, self.pointcloud, self.icp_threshold, initial_transform,
             o3d.pipelines.registration.TransformationEstimationPointToPlane())
         print(reg_p2p)
-        # print("Transformation is:")
-        # print(reg_p2p.transformation)
+        print("Transformation is:")
+        print(reg_p2p.transformation)
         print("")
         # other.draw_registration_result(self, reg_p2p.transformation)
         return reg_p2p

@@ -35,13 +35,13 @@ ICP_NOISE = gtsam.noiseModel.Diagonal.Sigmas(np.array([icp_rpy_sigma*np.pi/180,
 
 def main():
     # Prepare data
-    directory = '/media/arvc/INTENSO/DATASETS/dos_vueltas'
+    directory = '/media/arvc/INTENSO/DATASETS/dos_vueltas2'
     euroc_read = EurocReader(directory=directory)
     scan_times, gt_pos, gt_orient = euroc_read.prepare_experimental_data(deltaxy=0.2, deltath=0.02,
                                                                          nmax_scans=None)
     # create KeyFrameManager
-    keyframe_manager = KeyFrameManager(directory=directory, scan_times=scan_times)
-    keyframe_manager.add_keyframe(0)
+    # keyframe_manager = KeyFrameManager(directory=directory, scan_times=scan_times)
+    # keyframe_manager.add_keyframe(0)
 
     # create the graphslam graph
     graphslam = GraphSLAM(icp_noise=ICP_NOISE, prior_noise=PRIOR_NOISE)
@@ -64,6 +64,7 @@ def main():
             # graphslam.view_solution()
             i = assoc[0]
             j = assoc[1]
+            # atb = keyframe_manager.compute_transformation_local(i - 1, i, use_initial_transform=False)
             atb = keyframe_manager.compute_transformation_global(i, j)
             graphslam.add_non_consecutive_observation(i, j, atb)
             measured_transforms.append(atb)
@@ -73,7 +74,7 @@ def main():
             # optimizing whenever non_consecutive observations are performed (loop closing)
             graphslam.optimize()
             # graphslam.view_solution()
-            keyframe_manager.save_solution(graphslam.get_solution())
+            # keyframe_manager.save_solution(graphslam.get_solution())
             # keyframe_manager.view_map(xgt=odo_gt)
 
         # graphslam.view_solution()

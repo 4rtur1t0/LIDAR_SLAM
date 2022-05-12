@@ -94,11 +94,11 @@ def view_orient_data(data):
 
 
 def main():
-    directory = '/media/arvc/INTENSO/DATASETS/dos_vueltas'
+    directory = '/media/arvc/INTENSO/DATASETS/dos_vueltas2'
     # Prepare data
     euroc_read = EurocReader(directory=directory)
     # nmax_scans to limit the number of scans in the experiment
-    scan_times, gt_pos, gt_orient = euroc_read.prepare_experimental_data(deltaxy=0.2, deltath=0.02,
+    scan_times, gt_pos, gt_orient = euroc_read.prepare_experimental_data(deltaxy=0.2, deltath=0.2,
                                                                          nmax_scans=None)
     measured_transforms = []
     # create KeyFrameManager
@@ -120,11 +120,11 @@ def main():
 
     # view map with computed transforms
     keyframe_manager.set_relative_transforms(relative_transforms=measured_transforms)
-    keyframe_manager.view_map(keyframe_sampling=30, point_cloud_sampling=20)
+    keyframe_manager.view_map(keyframe_sampling=5, point_cloud_sampling=5)
 
     # view map with ground truth transforms
     keyframe_manager.set_global_transforms(global_transforms=gt_transforms)
-    keyframe_manager.view_map(keyframe_sampling=30, point_cloud_sampling=20)
+    keyframe_manager.view_map(keyframe_sampling=5, point_cloud_sampling=5)
     # equivalent: use relative transforms to compute the global map
     # keyframe_manager.set_relative_transforms(relative_transforms=gt_transforms_relative)
     # keyframe_manager.view_map(keyframe_sampling=30, point_cloud_sampling=20)
