@@ -6,7 +6,7 @@ import gtsam.utils.plot as gtsam_plot
 
 
 class DataAssociation():
-    def __init__(self, graphslam, delta_index=7, xi2_th=40.26):
+    def __init__(self, graphslam, delta_index=7, xi2_th=40.26, d_th=10):
         """
         xi2_th=16.26
         """
@@ -14,6 +14,7 @@ class DataAssociation():
         # look for data associations that are delta_index back in time
         self.delta_index = delta_index
         self.xi2_threshold = xi2_th
+        self.euclidean_distance_threshold = d_th
 
     def perform_data_association(self):
         """
@@ -21,16 +22,22 @@ class DataAssociation():
         """
         distances = []
         candidates = []
-        i = self.graphslam.current_index
+        i = self.graphslam.current_index-1
         # start checking delta_index indexes before i
         # check from i-delta_index up to the first node
         # caution, must reach index 0, first pose in graph
+        # Computing Mahalanobis distance
+        # for j in range(i-self.delta_index):
+        #     # caution, using only the x, y pose
+        #     d2 = self.joint_mahalanobis(j, i, only_position=True)
+        #     distances.append(d2)
+        #     # print('Mahalanobis distance between: ', i, j, d2)
+        #     if d2 < self.xi2_threshold:
+        #         candidates.append([i, j])
         for j in range(i-self.delta_index):
-            # caution, using only the x, y pose
-            d2 = self.joint_mahalanobis(j, i, only_position=True)
-            distances.append(d2)
-            # print('Mahalanobis distance between: ', i, j, d2)
-            if d2 < self.xi2_threshold:
+            d = self.euclidean_distance(i, j)
+            distances.append(d)
+            if d < self.euclidean_distance_threshold:
                 candidates.append([i, j])
         return candidates
 
@@ -87,8 +94,8 @@ class DataAssociation():
         Oii = self.marginal_information(i)
         Ojj = self.marginal_information(j)
         Inf_joint = Oii + Ojj
-        muii = self.graphslam.current_solution[i]
-        mujj = self.graphslam.current_solution[j]
+        muii = self.graphslam.current_estimate[i]
+        mujj = self.graphslam.current_estimate[j]
         mu = mujj-muii
         mu[2] = mod_2pi(mu[2])
         # do not consider orientation
@@ -97,14 +104,25 @@ class DataAssociation():
         d2 = np.abs(np.dot(mu.T, np.dot(Inf_joint, mu)))
         return d2
 
+    def euclidean_distance(self, i, j):
+        """
+        Compute Euclidean distance between nodes i and j in the solution
+        """
+        matrixii = self.graphslam.current_estimate.atPose3(i).matrix()
+        matrixjj = self.graphslam.current_estimate.atPose3(j).matrix()
+        muii = matrixii[:3, 3]
+        mujj = matrixjj[:3, 3]
+        dist = np.linalg.norm(mujj-muii)
+        return dist
+
     def test_conditional_probabilities(self):
         """
         """
-        muii = self.graphslam.current_solution[13]
+        muii = self.graphslam.current_estimate[13]
         Sii = self.marginal_covariance(13)
 
         Sjj = self.marginal_covariance(1)
-        mujj = self.graphslam.current_solution[1]
+        mujj = self.graphslam.current_estimate[1]
 
         Sij = self.joint_marginal_covariance(1, 13)
         Sji = self.joint_marginal_covariance(13, 1)

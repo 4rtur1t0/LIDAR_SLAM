@@ -19,11 +19,11 @@ class GraphSLAM():
         # first pose, add now
         # self.graph.add(gtsam.PriorFactorPose2(self.current_index, gtsam.Pose2(odom0[0], odom0[1], odom0[2]), prior_noise))
         # Add a prior on pose x0, with 0.3 rad std on roll,pitch,yaw and 0.1m x,y,z
-        prior_noise = gtsam.noiseModel.Diagonal.Sigmas(np.array([0.3, 0.3, 0.3, 0.1, 0.1, 0.1]))
+        # prior_noise = gtsam.noiseModel.Diagonal.Sigmas(np.array([0.3, 0.3, 0.3, 0.1, 0.1, 0.1]))
         self.graph.add(gtsam.PriorFactorPose3(self.current_index, gtsam.Pose3(), prior_noise))
-        self.initial_estimate = gtsam.Values()
-        self.initial_estimate.insert(self.current_index, gtsam.Pose3())
-        self.current_estimate = self.initial_estimate
+        self.temp_estimate = gtsam.Values()
+        self.temp_estimate.insert(self.current_index, gtsam.Pose3())
+        self.current_estimate = self.temp_estimate
         self.n_vertices = 1 # the prior above is an edge
         self.n_edges = 0
         self.ICP_NOISE = icp_noise
@@ -47,7 +47,7 @@ class GraphSLAM():
 
         # compute next estimation
         next_estimate = self.current_estimate.atPose3(k).compose(gtsam.Pose3(atb.array))
-        self.initial_estimate.insert(k + 1, next_estimate)
+        self.temp_estimate.insert(k + 1, next_estimate)
         self.current_index = k + 1
         # compound relative transformation to the last pose
         # cs = self.current_solution[-1]
@@ -64,14 +64,15 @@ class GraphSLAM():
         """
         self.n_edges = self.n_edges + 1
         # add non consecutive observation
-        self.graph.add(gtsam.BetweenFactorPose2(int(i), int(j), gtsam.Pose2(aTb[0], aTb[1], aTb[2]), self.ICP_NOISE))
+        # self.graph.add(gtsam.BetweenFactorPose2(int(i), int(j), gtsam.Pose2(aTb[0], aTb[1], aTb[2]), self.ICP_NOISE))
+        self.graph.add(gtsam.BetweenFactorPose3(i, j, gtsam.Pose3(aTb.array), self.ICP_NOISE))
 
     def optimize(self):
-        self.isam.update(self.graph, self.initial_estimate)
+        self.isam.update(self.graph, self.temp_estimate)
         self.current_estimate = self.isam.calculateEstimate()
-        self.initial_estimate.clear()
+        self.temp_estimate.clear()
 
-        self.report_on_progress()
+
         # # init initial estimate, read from self.current_solution
         # initial_estimate = gtsam.Values()
         # k = 0
@@ -91,8 +92,8 @@ class GraphSLAM():
         # result = optimizer.optimize()
         # print("Final Result:\n{}".format(result))
 
-        print("GRAPH")
-        print(self.graph)
+        # print("GRAPH")
+        # print(self.graph)
 
         # 5. Calculate and print marginal covariances for all variables
         # marginals = gtsam.Marginals(self.graph, result)
@@ -116,12 +117,12 @@ class GraphSLAM():
         #     self.current_solution.append(np.array([x, y, th]))
         # self.current_solution = np.array(self.current_solution)
 
-    def report_on_progress(self):
+    def view_solution(self):
         """Print and plot incremental progress of the robot for 2D Pose SLAM using iSAM2."""
 
         # Print the current estimates computed using iSAM2.
         print("*" * 50 + f"\nInference after State:\n", self.current_index)
-        print(self.current_estimate)
+        # print(self.current_estimate)
 
         # Compute the marginals for all states in the graph.
         marginals = gtsam.Marginals(self.graph, self.current_estimate)
@@ -131,33 +132,48 @@ class GraphSLAM():
         axes = fig.gca(projection='3d')
         plt.cla()
 
-        i = 1
+        i = 0
         while self.current_estimate.exists(i):
-            gtsam_plot.plot_pose3(0, self.current_estimate.atPose3(i), 10,
+            gtsam_plot.plot_pose3(0, self.current_estimate.atPose3(i), 1,
                                   marginals.marginalCovariance(i))
+            i += 20
+
+        axes.set_xlim3d(-50, 50)
+        axes.set_ylim3d(-50, 50)
+        axes.set_zlim3d(-50, 50)
+        plt.pause(0.05)
+
+    def get_solution_transforms(self):
+        """
+        Get a list of solutions in terms of homogenous matrices in global coordinates.
+        """
+        # print(self.current_estimate)
+        transforms = []
+        i = 0
+        while self.current_estimate.exists(i): #or i in range(len(self.current_estimate)):
+            a = self.current_estimate.atPose3(i)
+            # converting from Pose3 to numpy array and Homogenous matrix
+            transforms.append(HomogeneousMatrix(a.matrix()))
             i += 1
-
-        axes.set_xlim3d(-30, 45)
-        axes.set_ylim3d(-30, 45)
-        axes.set_zlim3d(-30, 45)
-        plt.pause(1)
-
-
-    def view_solution(self):
-        # init initial estimate, read from self.current_solution
-        initial_estimate = gtsam.Values()
-        k = 0
-        for pose2 in self.current_solution:
-            initial_estimate.insert(k, gtsam.Pose2(pose2[0], pose2[1], pose2[2]))
-            k = k+1
-        marginals = gtsam.Marginals(self.graph, initial_estimate)
-        for i in range(self.n_vertices):
-            gtsam_plot.plot_pose2(0, initial_estimate.atPose2(i), 0.5,
-                                  marginals.marginalCovariance(i))
-        plt.axis('equal')
-        plt.show()
+        return transforms
 
     def get_solution(self):
-        return self.current_solution
+        return self.current_estimate
+
+
+    # def view_solution(self):
+    #     # init initial estimate, read from self.current_solution
+    #     initial_estimate = gtsam.Values()
+    #     k = 0
+    #     for pose2 in self.current_solution:
+    #         initial_estimate.insert(k, gtsam.Pose2(pose2[0], pose2[1], pose2[2]))
+    #         k = k+1
+    #     marginals = gtsam.Marginals(self.graph, initial_estimate)
+    #     for i in range(self.n_vertices):
+    #         gtsam_plot.plot_pose2(0, initial_estimate.atPose2(i), 0.5,
+    #                               marginals.marginalCovariance(i))
+    #     plt.axis('equal')
+    #     plt.show()
+
 
 

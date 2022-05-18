@@ -93,6 +93,13 @@ def view_orient_data(data):
     plt.show(block=True)
 
 
+def save_transforms_to_file(transforms):
+    # import pandas as pd
+    # transforms = np.array(transforms)
+    import pickle
+    # pd.DataFrame(transforms).to_csv("measured_transforms.csv")
+    pickle.dump(transforms, open('measured_transforms.pkl', "wb"))
+
 def main():
     directory = '/media/arvc/INTENSO/DATASETS/dos_vueltas2'
     # Prepare data
@@ -111,12 +118,13 @@ def main():
         atb = keyframe_manager.compute_transformation_local(i-1, i, use_initial_transform=False)
         # atb_2 = keyframe_manager.compute_transformation_global(i - 1, i)
         measured_transforms.append(atb)
-
     # compute ground truth transformations: ground truth absolute and ground truth relative
     gt_transforms = compute_homogeneous_transforms(gt_pos, gt_orient)
     gt_transforms_relative = compute_homogeneous_transforms_relative(gt_transforms)
     # compare ICP measurements with ground_truth
     eval_errors(gt_transforms_relative, measured_transforms)
+
+    save_transforms_to_file(measured_transforms)
 
     # view map with computed transforms
     keyframe_manager.set_relative_transforms(relative_transforms=measured_transforms)
@@ -128,6 +136,7 @@ def main():
     # equivalent: use relative transforms to compute the global map
     # keyframe_manager.set_relative_transforms(relative_transforms=gt_transforms_relative)
     # keyframe_manager.view_map(keyframe_sampling=30, point_cloud_sampling=20)
+
 
 
 if __name__ == "__main__":
