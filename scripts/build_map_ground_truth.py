@@ -23,7 +23,7 @@ def compute_homogeneous_transforms(gt_pos, gt_orient):
 
 
 def main():
-    directory = '/media/arvc/INTENSO/DATASETS/dos_vueltas2'
+    directory = '/media/arvc/INTENSO/DATASETS/dos_vueltas_long_range'
     # Prepare data
     euroc_read = EurocReader(directory=directory)
     # nmax_scans to limit the number of scans in the experiment
@@ -43,6 +43,12 @@ def main():
     keyframe_manager.view_map(keyframe_sampling=5, point_cloud_sampling=5)
     keyframe_manager.save_to_file(filename='map.pcd', keyframe_sampling=5, point_cloud_sampling=5)
 
+    # view map with ground truth transforms
+    # keyframe_manager.set_global_transforms(global_transforms=gt_transforms)
+    # keyframe_manager.view_map(keyframe_sampling=5, point_cloud_sampling=5)
+    # equivalent: use relative transforms to compute the global map
+    # keyframe_manager.set_relative_transforms(relative_transforms=gt_transforms_relative)
+    # keyframe_manager.view_map(keyframe_sampling=30, point_cloud_sampling=20)
 
 if __name__ == "__main__":
     main()

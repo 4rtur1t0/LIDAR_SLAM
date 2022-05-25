@@ -1,7 +1,22 @@
 """
-Simple experiment using GTSAM in a GraphSLAM context.
+Runs a scanmatching algorithm on the point clouds.
 
-A series of
+Two variants of the scanmatching are applied.
+method A: using the whole points clouds.
+method B: segments the ground plane and estimates tz, alpha and beta. Next. tx, ty, gamma are computed using the whole
+            point clouds.
+
+Parameters:
+    Parameters of the experiment:
+        deltaxy, deltath: define the relative movement between scans to be processed.
+    Parameters of the scanmatcher:
+    class Keyframe():
+        self.voxel_size = 0.1 --> the size of the voxels. Pointclouds are sampled_down using this size.
+        self.voxel_size_normals = 3*self.voxel_size --> the radius to compute normals on each point.
+        self.icp_threshold = 3 --> the distance to associate points in the ICP algorithm.
+
+    TODO:
+        Parameters should be stored in a yaml file.
 """
 from eurocreader.eurocreader import EurocReader
 from graphslam.keyframemanager import KeyFrameManager
@@ -94,30 +109,41 @@ def view_orient_data(data):
 
 
 def save_transforms_to_file(transforms):
-    # import pandas as pd
-    # transforms = np.array(transforms)
     import pickle
-    # pd.DataFrame(transforms).to_csv("measured_transforms.csv")
     pickle.dump(transforms, open('measured_transforms.pkl', "wb"))
 
+
 def main():
-    directory = '/media/arvc/INTENSO/DATASETS/dos_vueltas2'
+    # directory = '/media/arvc/INTENSO/DATASETS/campus'
+    # directory = '/media/arvc/INTENSO/DATASETS/dos_vueltas_short_range'
+    directory = '/media/arvc/INTENSO/DATASETS/dos_vueltas_long_range'
     # Prepare data
     euroc_read = EurocReader(directory=directory)
     # nmax_scans to limit the number of scans in the experiment
-    scan_times, gt_pos, gt_orient = euroc_read.prepare_experimental_data(deltaxy=0.2, deltath=0.2,
-                                                                         nmax_scans=None)
+    scan_times, gt_pos, gt_orient = euroc_read.prepare_experimental_data(deltaxy=0.1, deltath=0.05, nmax_scans=None)
+    # start = 0
+    # end = 100
+    # scan_times = scan_times[start:end]
+    # gt_pos = gt_pos[start:end]
+    # gt_orient = gt_orient[start:end]
+    # view_pos_data(gt_pos)
+
     measured_transforms = []
     # create KeyFrameManager
     keyframe_manager = KeyFrameManager(directory=directory, scan_times=scan_times)
     keyframe_manager.add_keyframe(0)
+    keyframe_manager.keyframes[0].load_pointcloud()
+    keyframe_manager.keyframes[0].pre_process()
     for i in range(1, len(scan_times)):
         print('Adding keyframe and computing transform: ', i, 'out of ', len(scan_times))
         keyframe_manager.add_keyframe(i)
+        keyframe_manager.keyframes[i].load_pointcloud()
+        keyframe_manager.keyframes[i].pre_process()
         # compute relative motion between scan i and scan i-1 0 1, 1 2...
-        atb = keyframe_manager.compute_transformation_local(i-1, i, use_initial_transform=False)
-        # atb_2 = keyframe_manager.compute_transformation_global(i - 1, i)
+        atb = keyframe_manager.compute_transformation_local(i-1, i, method='B')
+        # atb = keyframe_manager.compute_transformation_global(i - 1, i, method='B')
         measured_transforms.append(atb)
+
     # compute ground truth transformations: ground truth absolute and ground truth relative
     gt_transforms = compute_homogeneous_transforms(gt_pos, gt_orient)
     gt_transforms_relative = compute_homogeneous_transforms_relative(gt_transforms)
@@ -128,14 +154,9 @@ def main():
 
     # view map with computed transforms
     keyframe_manager.set_relative_transforms(relative_transforms=measured_transforms)
-    keyframe_manager.view_map(keyframe_sampling=5, point_cloud_sampling=5)
+    keyframe_manager.view_map(keyframe_sampling=20, point_cloud_sampling=150)
 
-    # view map with ground truth transforms
-    keyframe_manager.set_global_transforms(global_transforms=gt_transforms)
-    keyframe_manager.view_map(keyframe_sampling=5, point_cloud_sampling=5)
-    # equivalent: use relative transforms to compute the global map
-    # keyframe_manager.set_relative_transforms(relative_transforms=gt_transforms_relative)
-    # keyframe_manager.view_map(keyframe_sampling=30, point_cloud_sampling=20)
+
 
 
 

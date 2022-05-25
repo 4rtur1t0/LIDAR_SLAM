@@ -57,10 +57,10 @@ class GraphSLAM():
         # concatenate prior solution
         # self.current_solution = np.vstack((self.current_solution, T.t2v()))
 
-    def add_non_consecutive_observation(self, i, j, aTb):
+    def add_loop_closing_observation(self, i, j, aTb):
         """
         aTb is a relative transformation from frame i to frame j
-        Add a vertex considering two consecutive poses
+        Add a vertex considering a loop closing observation where i-j > 1
         """
         self.n_edges = self.n_edges + 1
         # add non consecutive observation
@@ -142,6 +142,32 @@ class GraphSLAM():
         axes.set_ylim3d(-50, 50)
         axes.set_zlim3d(-50, 50)
         plt.pause(0.05)
+
+    def view_solution_fast(self):
+        """
+        Plot incremental progress without uncertainty
+        """
+        # Print the current estimates computed using iSAM2.
+        print("*" * 50 + f"\nInference after State:\n", self.current_index)
+        # print(self.current_estimate)
+
+        # Compute the marginals for all states in the graph.
+        # marginals = gtsam.Marginals(self.graph, self.current_estimate)
+
+        # Plot the newly updated iSAM2 inference.
+        fig = plt.figure(0)
+        axes = fig.gca(projection='3d')
+        plt.cla()
+
+        i = 0
+        while self.current_estimate.exists(i):
+            gtsam_plot.plot_pose3(0, self.current_estimate.atPose3(i), 1)
+            i += 20
+
+        axes.set_xlim3d(-50, 50)
+        axes.set_ylim3d(-50, 50)
+        axes.set_zlim3d(-1, 10)
+        plt.pause(0.0001)
 
     def get_solution_transforms(self):
         """

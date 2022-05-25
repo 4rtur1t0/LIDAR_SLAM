@@ -6,7 +6,7 @@ import gtsam.utils.plot as gtsam_plot
 
 
 class DataAssociation():
-    def __init__(self, graphslam, delta_index=7, xi2_th=40.26, d_th=10):
+    def __init__(self, graphslam, delta_index=7, xi2_th=40.26, d_th=6):
         """
         xi2_th=16.26
         """

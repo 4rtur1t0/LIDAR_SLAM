@@ -11,7 +11,7 @@ from graphslam.keyframemanager import KeyFrameManager
 import numpy as np
 
 # Declare the 3D translational standard deviations of the prior factor's Gaussian model, in meters.
-from tools.homogeneousmatrix import HomogeneousMatrix
+# from tools.homogeneousmatrix import HomogeneousMatrix
 
 prior_xyz_sigma = 0.05
 # Declare the 3D rotational standard deviations of the prior factor's Gaussian model, in degrees.
@@ -59,29 +59,32 @@ def read_measured_transforms():
 
 
 def main():
+    debug = False
     # Prepare data
-    directory = '/media/arvc/INTENSO/DATASETS/dos_vueltas2'
+    directory = '/media/arvc/INTENSO/DATASETS/dos_vueltas_long_range'
     euroc_read = EurocReader(directory=directory)
-    scan_times, gt_pos, gt_orient = euroc_read.prepare_experimental_data(deltaxy=0.2, deltath=0.2,
+    scan_times, gt_pos, gt_orient = euroc_read.prepare_experimental_data(deltaxy=0.1, deltath=0.05,
                                                                          nmax_scans=None)
-    measured_transforms = []
-    # measured_transforms = read_measured_transforms()
+    # measured_transforms = []
+    measured_transforms = read_measured_transforms()
     # create the graphslam graph
     graphslam = GraphSLAM(icp_noise=ICP_NOISE, prior_noise=PRIOR_NOISE)
     # create the Data Association object
-    dassoc = DataAssociation(graphslam, delta_index=180, xi2_th=20.0, d_th=8.0)
+    dassoc = DataAssociation(graphslam, delta_index=300, xi2_th=20.0, d_th=9.0)
     # create keyframemanager and add initial observation
     keyframe_manager = KeyFrameManager(directory=directory, scan_times=scan_times)
     keyframe_manager.add_keyframe(0)
     keyframe_manager.keyframes[0].load_pointcloud()
+    keyframe_manager.keyframes[0].pre_process()
     for i in range(1, len(scan_times)):
         print('Iteration (keyframe): ', i)
         # CAUTION: odometry is not used. ICP computed without any prior
         # compute relative motion between scan i and scan i-1 0 1, 1 2...
         keyframe_manager.add_keyframe(i)
-        keyframe_manager.keyframes[i].load_pointcloud()
-        atb = keyframe_manager.compute_transformation_local(i-1, i)
-        # atb = measured_transforms[i-1]
+        # keyframe_manager.keyframes[i].load_pointcloud()
+        # keyframe_manager.keyframes[i].pre_process()
+        # atb = keyframe_manager.compute_transformation_local(i-1, i)
+        atb = measured_transforms[i-1]
         # consecutive edges. Adds a new node AND EDGE with restriction aTb
         graphslam.add_consecutive_observation(atb)
         # non-consecutive edges
@@ -89,28 +92,34 @@ def main():
         for assoc in associations:
             i = assoc[0]
             j = assoc[1]
-            # keyframe_manager.keyframes[i].load_pointcloud()
-            # keyframe_manager.keyframes[j].load_pointcloud()
+            keyframe_manager.keyframes[i].load_pointcloud()
+            keyframe_manager.keyframes[j].load_pointcloud()
+            keyframe_manager.keyframes[i].pre_process()
+            keyframe_manager.keyframes[j].pre_process()
             # caution, need to use something with a prior
-            itj = keyframe_manager.compute_transformation_global(i, j)
-            atb = keyframe_manager.compute_transformation_local(i, j, initial_transform=itj)
-
-            graphslam.add_non_consecutive_observation(i, j, atb)
-            # keyframe_manager.view_map()
-        # if len(associations):
-            # optimizing whenever non_consecutive observations are performed (loop closing)
+            # itj = keyframe_manager.compute_transformation_global(i, j)
+            atb = keyframe_manager.compute_transformation_local(i, j, method='B', initial_transform=np.eye(4))
+            graphslam.add_loop_closing_observation(i, j, atb)
             # graphslam.optimize()
             # graphslam.view_solution()
+            # keyframe_manager.view_map()
+        if len(associations):
+            # optimizing whenever non_consecutive observations are performed (loop closing)
+            graphslam.optimize()
+            graphslam.view_solution()
             # keyframe_manager.save_solution(graphslam.get_solution())
-            # keyframe_manager.view_map(keyframe_sampling=1, point_cloud_sampling=5)
+            estimated_transforms = graphslam.get_solution_transforms()
+            keyframe_manager.set_global_transforms(global_transforms=estimated_transforms)
+            keyframe_manager.view_map(keyframe_sampling=1, point_cloud_sampling=5)
 
         # or optimizing at every new observation, only new updates are optimized
-        graphslam.optimize()
-        graphslam.view_solution()
-        estimated_transforms = graphslam.get_solution_transforms()
-        # view map with computed transforms
-        keyframe_manager.set_global_transforms(global_transforms=estimated_transforms)
-        # keyframe_manager.view_map(keyframe_sampling=1, point_cloud_sampling=5)
+        if debug:
+            graphslam.optimize()
+            graphslam.view_solution_fast()
+            estimated_transforms = graphslam.get_solution_transforms()
+            # view map with computed transforms
+            keyframe_manager.set_global_transforms(global_transforms=estimated_transforms)
+            keyframe_manager.view_map(keyframe_sampling=1, point_cloud_sampling=5)
 
 
     # keyframe_manager.save_solution(graphslam.get_solution())

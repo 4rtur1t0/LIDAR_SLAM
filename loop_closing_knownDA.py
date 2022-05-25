@@ -13,29 +13,8 @@ import numpy as np
 # Declare the 3D translational standard deviations of the prior factor's Gaussian model, in meters.
 from tools.homogeneousmatrix import HomogeneousMatrix
 
-prior_xyz_sigma = 0.05
-# Declare the 3D rotational standard deviations of the prior factor's Gaussian model, in degrees.
-prior_rpy_sigma = 0.2
-# Declare the 3D translational standard deviations of the odometry factor's Gaussian model, in meters.
-icp_xyz_sigma = 0.01
-# Declare the 3D rotational standard deviations of the odometry factor's Gaussian model, in degrees.
-icp_rpy_sigma = 0.05
 
-PRIOR_NOISE = gtsam.noiseModel.Diagonal.Sigmas(np.array([prior_rpy_sigma*np.pi/180,
-                                                         prior_rpy_sigma*np.pi/180,
-                                                         prior_rpy_sigma*np.pi/180,
-                                                         prior_xyz_sigma,
-                                                         prior_xyz_sigma,
-                                                         prior_xyz_sigma]))
-ICP_NOISE = gtsam.noiseModel.Diagonal.Sigmas(np.array([icp_rpy_sigma*np.pi/180,
-                                                       icp_rpy_sigma*np.pi/180,
-                                                       icp_rpy_sigma*np.pi/180,
-                                                       icp_xyz_sigma,
-                                                       icp_xyz_sigma,
-                                                       icp_xyz_sigma]))
-
-
-def perform_data_associations_ground_truth(gt_pos, current_index, delta_index=80, euclidean_distance_threshold=5.0):
+def perform_data_associations_ground_truth(gt_pos, current_index, delta_index=160, euclidean_distance_threshold=5):
     candidates = []
     distances = []
     i = current_index-1
@@ -50,24 +29,31 @@ def perform_data_associations_ground_truth(gt_pos, current_index, delta_index=80
 
 def main():
     # Prepare data
-    directory = '/media/arvc/INTENSO/DATASETS/dos_vueltas2'
+    directory = '/media/arvc/INTENSO/DATASETS/dos_vueltas_long_range'
     euroc_read = EurocReader(directory=directory)
-    scan_times, gt_pos, gt_orient = euroc_read.prepare_experimental_data(deltaxy=0.2, deltath=0.2,
+    scan_times, gt_pos, gt_orient = euroc_read.prepare_experimental_data(deltaxy=0.1, deltath=0.05,
                                                                          nmax_scans=None)
     keyframe_manager = KeyFrameManager(directory=directory, scan_times=scan_times)
     for i in range(0, len(scan_times)):
         print('Iteration (keyframe): ', i)
         keyframe_manager.add_keyframe(i)
         # keyframe_manager.keyframes[i].load_pointcloud()
+        # keyframe_manager.keyframes[i].pre_process()
         associations = perform_data_associations_ground_truth(gt_pos, i)
         for assoc in associations:
             i = assoc[0]
             j = assoc[1]
             keyframe_manager.keyframes[i].load_pointcloud()
             keyframe_manager.keyframes[j].load_pointcloud()
+            keyframe_manager.keyframes[i].pre_process()
+            keyframe_manager.keyframes[j].pre_process()
+
             # caution, need to use something with a prior
-            itj, Oij = keyframe_manager.compute_transformation_global(i, j)
-            # atb, Oij = keyframe_manager.compute_transformation_local(i, j, initial_transform=itj.array)
+            itj = keyframe_manager.compute_transformation_global(i, j, method='D')
+            atb = keyframe_manager.compute_transformation_local(i, j, method='B', initial_transform=itj.array)
+
+            # atb = keyframe_manager.compute_transformation_local(i, j, method='B', initial_transform=np.eye(4))
+
 
 
 if __name__ == "__main__":

@@ -18,7 +18,7 @@ def preprocess_point_cloud(pcd, voxel_size):
 if __name__ == '__main__':
     pcd_data = o3d.data.DemoICPPointClouds()
     parser = argparse.ArgumentParser(
-        'Global point cloud registration example with RANSAC')
+        'Global point cloud o3d_demos example with RANSAC')
     parser.add_argument('src',
                         type=str,
                         default=pcd_data.paths[0],

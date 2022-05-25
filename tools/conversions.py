@@ -258,3 +258,19 @@ def slerp(Q1, Q2, t):
     # if th == 0, dividing by zero, just return Q1
     else:
         return Q1
+
+
+def cartesian_to_spherical(point):
+    [x, y, z] = point
+    r = np.sqrt(x*x + y*y + z*z)
+    th = np.arctan2(np.sqrt(x*x + y*y), z)
+    phi = np.arctan2(y, x)
+    return np.array([phi, th, r])
+
+
+def spherical_to_cartesian(spher):
+    [phi, th, r] = spher
+    x = r*np.cos(phi)*np.sin(th)
+    y = r*np.sin(phi)*np.sin(th)
+    z = r*np.cos(th)
+    return np.array([x, y, z])
