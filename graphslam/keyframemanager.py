@@ -19,6 +19,15 @@ class KeyFrameManager():
         self.scan_times = scan_times
         self.keyframes = []
 
+    def add_all_keyframes(self):
+        for i in range(len(self.scan_times)):
+            self.add_keyframe(i)
+
+    def load_pointclouds(self):
+        for i in range(len(self.scan_times)):
+            print('Loading pointcloud for keyframe: ', i, end='\r')
+            self.keyframes[i].load_pointcloud()
+
     def add_keyframe(self, index):
         kf = KeyFrame(directory=self.directory, scan_time=self.scan_times[index], index=index)
         self.keyframes.append(kf)
@@ -46,10 +55,10 @@ class KeyFrameManager():
         """
         Assign the global transformation for each of the keyframes.
         """
-        for i in range(len(self.keyframes)):
+        for i in range(len(global_transforms)):
             self.keyframes[i].set_global_transform(global_transforms[i])
 
-    def compute_transformation_local(self, i, j, method='A', initial_transform=np.eye(4)):
+    def compute_transformation_local_registration(self, i, j, method='A', initial_transform=np.eye(4)):
         """
         Compute relative transformation using ICP from keyframe i to keyframe j when j-i = 1.
         An initial estimate is used to compute using icp
@@ -74,32 +83,26 @@ class KeyFrameManager():
             atb, rmse = self.keyframes[i].local_registrationB(self.keyframes[j], initial_transform=initial_transform)
         return atb, rmse
 
-    def compute_transformation_global(self, i, j, method='A'):
+    def compute_transformation_global_registration(self, i, j):
         """
         Compute relative transformation using ICP from keyframe i to keyframe j.
         An initial estimate is used.
         FPFh to align and refine with icp
         Returning the ratio between the best and second best correlations.
         """
-        # if method == 'A':
-        #     atb = self.keyframes[i].global_registrationA(self.keyframes[j])
-        # elif method == 'B':
-        #     atb = self.keyframes[i].global_registrationB(self.keyframes[j])
-        # elif method == 'C':
-        #     atb = self.keyframes[i].global_registrationC(self.keyframes[j])
-        # else:
-        atb, corr = self.keyframes[i].global_registrationD(self.keyframes[j])
-        return atb, corr
+        atb, prob = self.keyframes[i].global_registrationD(self.keyframes[j])
+        return atb, prob
 
-    def view_map(self, keyframe_sampling=10, point_cloud_sampling=1000):
+    def view_map(self, keyframe_sampling=10, point_cloud_sampling=100):
         print("COMPUTING MAP FROM KEYFRAMES")
         # transform all keyframes to global coordinates.
         pointcloud_global = o3d.geometry.PointCloud()
         for i in range(0, len(self.keyframes), keyframe_sampling):
             print("Keyframe: ", i, "out of: ", len(self.keyframes), end='\r')
-            kf = self.keyframes[i]
             # transform to global and
-            pointcloud_temp = kf.transform_to_global(point_cloud_sampling=point_cloud_sampling)
+            pointcloud_temp = self.keyframes[i].transform_to_global(point_cloud_sampling=point_cloud_sampling)
+            if pointcloud_temp is None:
+                continue
             # yuxtaponer los pointclouds
             pointcloud_global = pointcloud_global + pointcloud_temp
         # draw the whole map

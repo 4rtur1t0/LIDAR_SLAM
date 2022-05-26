@@ -114,15 +114,13 @@ def save_transforms_to_file(transforms):
 
 
 def main():
-    # directory = '/media/arvc/INTENSO/DATASETS/campus'
-    # directory = '/media/arvc/INTENSO/DATASETS/dos_vueltas_short_range'
     directory = '/media/arvc/INTENSO/DATASETS/dos_vueltas_long_range'
     # Prepare data
     euroc_read = EurocReader(directory=directory)
     # nmax_scans to limit the number of scans in the experiment
     scan_times, gt_pos, gt_orient = euroc_read.prepare_experimental_data(deltaxy=0.1, deltath=0.05, nmax_scans=None)
     # start = 0
-    # end = 100
+    # end = 20
     # scan_times = scan_times[start:end]
     # gt_pos = gt_pos[start:end]
     # gt_orient = gt_orient[start:end]
@@ -131,17 +129,15 @@ def main():
     measured_transforms = []
     # create KeyFrameManager
     keyframe_manager = KeyFrameManager(directory=directory, scan_times=scan_times)
-    keyframe_manager.add_keyframe(0)
+    keyframe_manager.add_all_keyframes()
     keyframe_manager.keyframes[0].load_pointcloud()
     keyframe_manager.keyframes[0].pre_process()
     for i in range(1, len(scan_times)):
         print('Adding keyframe and computing transform: ', i, 'out of ', len(scan_times))
-        keyframe_manager.add_keyframe(i)
         keyframe_manager.keyframes[i].load_pointcloud()
         keyframe_manager.keyframes[i].pre_process()
         # compute relative motion between scan i and scan i-1 0 1, 1 2...
-        atb = keyframe_manager.compute_transformation_local(i-1, i, method='B')
-        # atb = keyframe_manager.compute_transformation_global(i - 1, i, method='B')
+        atb, rmse = keyframe_manager.compute_transformation_local_registration(i-1, i, method='B')
         measured_transforms.append(atb)
 
     # compute ground truth transformations: ground truth absolute and ground truth relative
@@ -154,10 +150,7 @@ def main():
 
     # view map with computed transforms
     keyframe_manager.set_relative_transforms(relative_transforms=measured_transforms)
-    keyframe_manager.view_map(keyframe_sampling=20, point_cloud_sampling=150)
-
-
-
+    keyframe_manager.view_map(keyframe_sampling=10, point_cloud_sampling=10)
 
 
 if __name__ == "__main__":

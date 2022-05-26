@@ -143,17 +143,12 @@ class GraphSLAM():
         axes.set_zlim3d(-50, 50)
         plt.pause(0.05)
 
-    def view_solution_fast(self):
+    def view_solution_fast(self, skip=1):
         """
         Plot incremental progress without uncertainty
         """
         # Print the current estimates computed using iSAM2.
         print("*" * 50 + f"\nInference after State:\n", self.current_index)
-        # print(self.current_estimate)
-
-        # Compute the marginals for all states in the graph.
-        # marginals = gtsam.Marginals(self.graph, self.current_estimate)
-
         # Plot the newly updated iSAM2 inference.
         fig = plt.figure(0)
         axes = fig.gca(projection='3d')
@@ -162,7 +157,7 @@ class GraphSLAM():
         i = 0
         while self.current_estimate.exists(i):
             gtsam_plot.plot_pose3(0, self.current_estimate.atPose3(i), 1)
-            i += 20
+            i += skip
 
         axes.set_xlim3d(-50, 50)
         axes.set_ylim3d(-50, 50)

@@ -34,9 +34,10 @@ def main():
     scan_times, gt_pos, gt_orient = euroc_read.prepare_experimental_data(deltaxy=0.1, deltath=0.05,
                                                                          nmax_scans=None)
     keyframe_manager = KeyFrameManager(directory=directory, scan_times=scan_times)
+    keyframe_manager.add_all_keyframes()
     for i in range(0, len(scan_times)):
         print('Iteration (keyframe): ', i)
-        keyframe_manager.add_keyframe(i)
+        # keyframe_manager.add_keyframe(i)
         # keyframe_manager.keyframes[i].load_pointcloud()
         # keyframe_manager.keyframes[i].pre_process()
         associations = perform_data_associations_ground_truth(gt_pos, i)
@@ -49,10 +50,9 @@ def main():
             keyframe_manager.keyframes[j].pre_process()
 
             # caution, need to use something with a prior
-            itj = keyframe_manager.compute_transformation_global(i, j, method='D')
-            atb = keyframe_manager.compute_transformation_local(i, j, method='B', initial_transform=itj.array)
+            itj, prob = keyframe_manager.compute_transformation_global(i, j)
+            atb, rmse = keyframe_manager.compute_transformation_local(i, j, method='B', initial_transform=itj.array)
 
-            # atb = keyframe_manager.compute_transformation_local(i, j, method='B', initial_transform=np.eye(4))
 
 
 
