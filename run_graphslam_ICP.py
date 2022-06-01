@@ -34,7 +34,7 @@ ICP_NOISE = gtsam.noiseModel.Diagonal.Sigmas(np.array([icp_rpy_sigma*np.pi/180,
 
 def read_measured_transforms():
     import pickle
-    measured_transforms = pickle.load(open('measured_transforms.pkl', 'rb'))
+    measured_transforms = pickle.load(open('measured_transforms_0.1_0.05.pkl', 'rb'))
     return measured_transforms
 
 
@@ -61,7 +61,6 @@ def main():
         print('Iteration (keyframe): ', k)
         # CAUTION: odometry is not used. ICP computed without any prior
         # compute relative motion between scan i and scan i-1 0 1, 1 2...
-        # keyframe_manager.keyframes[i].load_pointcloud()
         # keyframe_manager.keyframes[i].pre_process()
         # atb = keyframe_manager.compute_transformation_local(k-1, i)
         atb = measured_transforms[k-1]
