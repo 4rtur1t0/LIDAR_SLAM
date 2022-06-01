@@ -11,6 +11,7 @@ from tools.homogeneousmatrix import HomogeneousMatrix
 import matplotlib.pyplot as plt
 import open3d as o3d
 import copy
+from config import PARAMETERS
 
 
 class KeyFrame():
@@ -18,13 +19,13 @@ class KeyFrame():
         # the estimated transform of this keyframe with respect to global coordinates
         self.transform = None
         # max radius to filter points
-        self.max_radius = 30
+        self.max_radius = PARAMETERS.max_distance
         # voxel sizes
-        self.voxel_downsample_size = None # 0.0001
-        self.voxel_size_normals = 0.3
-        self.voxel_size_normals_ground_plane = 0.6
+        self.voxel_downsample_size = PARAMETERS.voxel_size # None
+        self.voxel_size_normals = PARAMETERS.radius_normals
+        self.voxel_size_normals_ground_plane = PARAMETERS.radius_gd
         # self.voxel_size_fpfh = 3*self.voxel_s
-        self.icp_threshold = 3
+        self.icp_threshold = PARAMETERS.distance_threshold
         self.fpfh_threshold = 2
         # crop point cloud to this bounding box
         # self.dims_bbox = [40, 40, 40]
@@ -63,12 +64,11 @@ class KeyFrame():
         self.pointcloud_non_ground_plane = pcd_non_ground_plane
         # calcular las normales a cada punto
         self.pointcloud_filtered.estimate_normals(o3d.geometry.KDTreeSearchParamHybrid(radius=self.voxel_size_normals,
-                                                                              max_nn=30))
+                                                                              max_nn=PARAMETERS.max_nn))
         self.pointcloud_ground_plane.estimate_normals(o3d.geometry.KDTreeSearchParamHybrid(radius=self.voxel_size_normals_ground_plane,
-                                                                              max_nn=30))
+                                                                              max_nn=PARAMETERS.max_nn_gd))
         self.pointcloud_non_ground_plane.estimate_normals(o3d.geometry.KDTreeSearchParamHybrid(radius=self.voxel_size_normals,
-                                                                              max_nn=30))
-        # self.scdescriptor.
+                                                                              max_nn=PARAMETERS.max_nn))
 
     def filter_by_radius(self, max_radius):
         points = np.asarray(self.pointcloud.points)
@@ -140,7 +140,7 @@ class KeyFrame():
             - B: using non ground planes (rest of the points) tx, ty and gamma are estimated
         caution, initial_transform is a np array.
         """
-        debug = False
+        debug = True
         # if debug:
         #     other.draw_registration_result(self, initial_transform)
 
@@ -182,7 +182,7 @@ class KeyFrame():
         Two scan context descriptors are found.
         """
         print('Computing global registration using Scan Context')
-        debug = False
+        debug = True
         if debug:
             other.draw_registration_result(self, np.eye(4))
             # self.pointcloud.paint_uniform_color([1, 0, 0])

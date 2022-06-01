@@ -41,7 +41,7 @@ def read_measured_transforms():
 def main():
     debug = False
     # Prepare data
-    directory = '/media/arvc/INTENSO/DATASETS/dos_vueltas_long_range'
+    directory = '/home/arvc/Escritorio/develop/Registration/dos_vueltas_features/'
     euroc_read = EurocReader(directory=directory)
     scan_times, gt_pos, gt_orient = euroc_read.prepare_experimental_data(deltaxy=0.1, deltath=0.05,
                                                                          nmax_scans=None)

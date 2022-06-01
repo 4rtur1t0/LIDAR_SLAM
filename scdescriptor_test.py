@@ -60,12 +60,12 @@ def eval_errors(ground_truth_transforms, measured_transforms):
 
 def main():
     # Prepare data
-    directory = '/media/arvc/INTENSO/DATASETS/dos_vueltas_long_range'
+    directory = '/home/arvc/Escritorio/develop/Registration/dos_vueltas_features/'
     euroc_read = EurocReader(directory=directory)
     scan_times, gt_pos, gt_orient = euroc_read.prepare_experimental_data(deltaxy=3.5, deltath=0.5,
                                                                          nmax_scans=None)
     # 13, 23, 29, 41, 42
-    start = 13
+    start = 0
     end = 50
     scan_times = scan_times[start:end]
     gt_pos = gt_pos[start:end]
@@ -75,17 +75,18 @@ def main():
     measured_transforms = []
     keyframe_manager = KeyFrameManager(directory=directory, scan_times=scan_times)
     keyframe_manager.add_all_keyframes()
+    keyframe_manager.load_pointclouds()
     for i in range(0, len(scan_times)-1):
         print('Iteration (keyframe): ', i)
         # keyframe_manager.add_keyframe(i)
-        keyframe_manager.keyframes[i].load_pointcloud()
+        # keyframe_manager.keyframes[i].load_pointcloud()
         keyframe_manager.keyframes[i].pre_process()
-        keyframe_manager.keyframes[i + 1].load_pointcloud()
+        # keyframe_manager.keyframes[i + 1].load_pointcloud()
         keyframe_manager.keyframes[i + 1].pre_process()
 
         # caution, need to use something with a prior
         itj, prob = keyframe_manager.compute_transformation_global_registration(i, i+1)
-        # atb, rmse = keyframe_manager.compute_transformation_local_registration(i, i+1, method='B', initial_transform=itj.array)
+        atb, rmse = keyframe_manager.compute_transformation_local_registration(i, i+1, method='B', initial_transform=itj.array)
         measured_transforms.append(itj)
     # compute ground truth transformations: ground truth absolute and ground truth relative
     gt_transforms = compute_homogeneous_transforms(gt_pos, gt_orient)

@@ -30,7 +30,7 @@ class GraphSLAM():
 
         parameters = gtsam.ISAM2Params()
         parameters.setRelinearizeThreshold(0.1)
-        parameters.relinearizeSkip = 1
+        # parameters.relinearizeSkip = 1
         self.isam = gtsam.ISAM2(parameters)
 
     def add_consecutive_observation(self, atb):
