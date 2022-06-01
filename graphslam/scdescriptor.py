@@ -74,7 +74,7 @@ class SCDescriptor():
         return self.descriptor
 
     def maximize_correlation(self, other):
-        debug = False
+        debug = True
         sc1 = self.descriptor
         sc2 = other.descriptor
         corrs = []

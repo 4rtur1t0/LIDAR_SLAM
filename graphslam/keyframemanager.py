@@ -8,6 +8,7 @@ import numpy as np
 from graphslam.keyframe import KeyFrame
 from tools.homogeneousmatrix import HomogeneousMatrix
 import open3d as o3d
+from config import PARAMETERS
 
 
 class KeyFrameManager():
@@ -27,6 +28,7 @@ class KeyFrameManager():
         for i in range(len(self.scan_times)):
             print('Loading pointcloud for keyframe: ', i, end='\r')
             self.keyframes[i].load_pointcloud()
+        print('Ended loading poinclouds')
 
     def add_keyframe(self, index):
         kf = KeyFrame(directory=self.directory, scan_time=self.scan_times[index], index=index)
