@@ -15,23 +15,17 @@ class ParametersConfig():
             self.directory = config.get('directory')
 
             self.voxel_size = config.get('down_sample').get('voxel_size')
-
-            self.do_filter_by_distance = config.get('filter_by_distance').get('decision')
             self.max_distance = config.get('filter_by_distance').get('distance')
 
-            self.filter_ground_plane = config.get('filter_ground_plane').get('decision')
             self.radius_gd = config.get('filter_ground_plane').get('radius_normals')
             self.max_nn_gd = config.get('filter_ground_plane').get('maximum_neighbors')
 
             self.radius_normals = config.get('normals').get('radius_normals')
             self.max_nn = config.get('normals').get('maximum_neighbors')
 
-            self.point2 = config.get('icp').get('point2')
+            self.fpfh_threshold = config.get('fpfh').get('fpfh_threshold')
+            self.max_radius_descriptor = config.get('descriptor').get('max_radius_descriptor')
             self.distance_threshold = config.get('icp').get('distance_threshold')
-            self.step = config.get('icp').get('step')
-
-            self.vis_normals = config.get('visualization').get('normals')
-            self.vis_registration = config.get('visualization').get('registration_result')
 
             self.exp_deltaxy = config.get('experiment').get('deltaxy')
             self.exp_deltath = config.get('experiment').get('deltath')

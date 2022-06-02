@@ -26,7 +26,7 @@ class KeyFrame():
         self.voxel_size_normals_ground_plane = PARAMETERS.radius_gd
         # self.voxel_size_fpfh = 3*self.voxel_s
         self.icp_threshold = PARAMETERS.distance_threshold
-        self.fpfh_threshold = 2
+        self.fpfh_threshold = PARAMETERS.fpfh_threshold
         # crop point cloud to this bounding box
         # self.dims_bbox = [40, 40, 40]
         self.index = index
@@ -38,7 +38,7 @@ class KeyFrame():
         self.pointcloud_filtered = None
         self.pointcloud_ground_plane = None
         self.pointcloud_non_ground_plane = None
-        self.max_radius_descriptor = 60
+        self.max_radius_descriptor = PARAMETERS.max_radius_descriptor
         self.scdescriptor = SCDescriptor(max_radius=self.max_radius_descriptor)
         # save the pointcloud for Scan context description
 

@@ -119,7 +119,7 @@ def main():
     # Prepare data
     euroc_read = EurocReader(directory=directory)
     # nmax_scans to limit the number of scans in the experiment
-    scan_times, gt_pos, gt_orient = euroc_read.prepare_experimental_data(deltaxy=PARAMETERS.exp_deltaxy, deltath=PARAMETERS.exp_deltath, nmax_scans=None)
+    scan_times, gt_pos, gt_orient = euroc_read.prepare_experimental_data(deltaxy=PARAMETERS.exp_deltaxy, deltath=PARAMETERS.exp_deltath, nmax_scans=PARAMETERS.exp_long)
     start = 0
     end = 100
     scan_times = scan_times[start:end]

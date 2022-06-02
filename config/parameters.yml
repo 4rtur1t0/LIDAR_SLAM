@@ -4,30 +4,26 @@ down_sample:
   voxel_size: 0.03 # Number or None
 
 filter_by_distance:
-  decision: true
   distance: 35
 
 filter_ground_plane:
-  decision: true
   radius_normals: 3
   maximum_neighbors: 200
 
 normals:
   maximum_neighbors: 50
-#  maximum_neighbors: 200
   radius_normals: 0.5
-#  radius_normals: 0.5
+
+fpfh:
+  fpfh_threshold: 2
+
+descriptor:
+  max_radius_descriptor: 60
 
 icp:
-  point2: 'plane'
   distance_threshold: 1
-  step: 5
-
-visualization:
-  normals: false
-  registration_result: false
 
 experiment:
-  deltaxy: [0.2]
+  deltaxy: 0.2
   deltath: 0.1
-  long: 600
+  long: 600 # Number or None
