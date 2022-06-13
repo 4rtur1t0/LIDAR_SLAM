@@ -31,14 +31,28 @@ from graphslam.graphslam import GraphSLAM
 import gtsam
 from tools.conversions import mod_2pi
 
-SIGMAS_PRIOR = gtsam.Point3(0.1, 0.1, 0.01)
-SIGMAS_ICP = gtsam.Point3(0.3, 0.3, 0.05)
-SIGMAS_ICP_REAL = gtsam.Point3(0.05, 0.05, 0.01)
-PRIOR_NOISE = gtsam.noiseModel.Diagonal.Sigmas(sigmas=SIGMAS_PRIOR)
-ICP_NOISE = gtsam.noiseModel.Diagonal.Sigmas(sigmas=SIGMAS_ICP)
-# add less noise, since gaussians are linearized approximations
-ICP_NOISE_REAL = gtsam.noiseModel.Diagonal.Sigmas(sigmas=SIGMAS_ICP_REAL)
+prior_xyz_sigma = 0.05
+# Declare the 3D rotational standard deviations of the prior factor's Gaussian model, in degrees.
+prior_rpy_sigma = 0.02
+# Declare the 3D translational standard deviations of the odometry factor's Gaussian model, in meters.
+icp_xyz_sigma = 0.1
+# Declare the 3D rotational standard deviations of the odometry factor's Gaussian model, in degrees.
+icp_rpy_sigma = 0.05
 
+PRIOR_NOISE = gtsam.noiseModel.Diagonal.Sigmas(np.array([prior_rpy_sigma*np.pi/180,
+                                                         prior_rpy_sigma*np.pi/180,
+                                                         prior_rpy_sigma*np.pi/180,
+                                                         prior_xyz_sigma,
+                                                         prior_xyz_sigma,
+                                                         prior_xyz_sigma]))
+ICP_NOISE = gtsam.noiseModel.Diagonal.Sigmas(np.array([icp_rpy_sigma*np.pi/180,
+                                                       icp_rpy_sigma*np.pi/180,
+                                                       icp_rpy_sigma*np.pi/180,
+                                                       icp_xyz_sigma,
+                                                       icp_xyz_sigma,
+                                                       icp_xyz_sigma]))
+
+ICP_NOISE_DA = np.diag([prior_xyz_sigma, prior_xyz_sigma, prior_rpy_sigma])
 
 x_gt = np.array([[0, 0, 0],  # 0
              [5, 0, 0],  # 1
@@ -68,16 +82,16 @@ x_gt = np.array([[0, 0, 0],  # 0
                  [5, 0, 0]])  # 15
 
 
-def simulate_observations_SE2(x_gt, observations, sigmas_icp):
+def simulate_observations_SE2(x_gt, observations):
     """
     x_gt: ground truth poses
     A series of relative observations are generated from the ground truth solution x_gt
     """
     N = len(observations)
     edges = []
-    sx = sigmas_icp[0]
-    sy = sigmas_icp[1]
-    sth = sigmas_icp[2]
+    sx = icp_xyz_sigma
+    sy = icp_xyz_sigma
+    sth = icp_rpy_sigma
     for k in range(N):
         i = observations[k][0]
         j = observations[k][1]
@@ -92,42 +106,58 @@ def simulate_observations_SE2(x_gt, observations, sigmas_icp):
         zij = zij + np.array([np.random.normal(0, sx, 1)[0],
                               np.random.normal(0, sy, 1)[0],
                               np.random.normal(0, sth, 1)[0]])
+        # np.random.normal([0, 0, 0], [sx, sy, sth], 1)
         zij[2] = mod_2pi(zij[2])
-        edges.append(zij)
-    edges = np.array(edges)
+        Tij = HomogeneousMatrix([zij[0], zij[1], 0], Euler([0, 0, zij[2]]))
+        edges.append(Tij)
     return edges
+
+
+def simulate_observations(associations):
+    atbs = []
+    for assoc in associations:
+        # caution: we need a true observation! atb
+        atb = simulate_observations_SE2(x_gt=x_gt, observations=[assoc])
+        # TODO: add non gaussian noise to atb with probability p
+        atbs.append(atb)
+    return atbs
 
 
 def main():
     graphslam = GraphSLAM(icp_noise=ICP_NOISE, prior_noise=PRIOR_NOISE)
     # create the Data Association object
-    dassoc = DataAssociation(graphslam, xi2_th=20.0)
+    dassoc = DataAssociation(graphslam, xi2_th=20.0, icp_noise=ICP_NOISE_DA)
 
     for k in range(1, len(x_gt)):
         # Vertex j is observed from vertex i
         i = k-1
         j = k
-        atb = simulate_observations_SE2(x_gt=x_gt, observations=[[i, j]], sigmas_icp=SIGMAS_ICP_REAL)
+        atb = simulate_observations_SE2(x_gt=x_gt, observations=[[i, j]])
         # consecutive edges. Adds a new node
         graphslam.add_consecutive_observation(atb[0])
-        graphslam.view_solution()
-        # now check for possible data associations.
-        associations = dassoc.perform_data_association()
-        # non-consecutive edges
-        for assoc in associations:
-            # caution: need a true observation! atb
-            atb = simulate_observations_SE2(x_gt=x_gt, observations=[assoc], sigmas_icp=SIGMAS_ICP_REAL)
+        # now check for possible data associations. Initial set of candidates
+        associations = dassoc.find_initial_candidates()
+        # simulate observations for each association
+        atbs = simulate_observations(associations)
+        if len(associations) > 2:
+            print('Debug')
+        # filter these associations (Aij, Otsu method based on probability, RANSAC, JCBB. using pairwise compatibility
+        associations = dassoc.filter_data_associations(associations, atbs)
+        # non-consecutive edges for filtered associations
+        # for assoc in associations:
+        for i in range(len(associations)):
             # i, j. node j observed from node i
-            graphslam.add_non_consecutive_observation(assoc[0], assoc[1], atb[0])
+            graphslam.add_loop_closing_observation(associations[i][0], associations[i][1], atbs[i])
         # optimizing whenever non_consecutive observations are performed (loop closing)
         if len(associations) > 0:
             graphslam.optimize()
+            graphslam.view_solution2D(skip=1)
         # or optimizing at every new observation
         # graphslam.optimize()
         # graphslam.view_solution()
     # or optimizing when all information is available
     graphslam.optimize()
-    graphslam.view_solution()
+    graphslam.view_solution2D(skip=1)
 
 
 if __name__ == "__main__":

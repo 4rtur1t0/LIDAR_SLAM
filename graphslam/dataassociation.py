@@ -4,9 +4,11 @@ from tools.conversions import mod_2pi
 import gtsam
 import gtsam.utils.plot as gtsam_plot
 
+from tools.outlier_rejection import outlier_rejection
+
 
 class DataAssociation():
-    def __init__(self, graphslam, delta_index=7, xi2_th=40.26, d_th=6):
+    def __init__(self, graphslam,  icp_noise, delta_index=7, xi2_th=40.26, d_th=6):
         """
         xi2_th=16.26
         """
@@ -15,31 +17,103 @@ class DataAssociation():
         self.delta_index = delta_index
         self.xi2_threshold = xi2_th
         self.euclidean_distance_threshold = d_th
+        self.icp_noise = icp_noise
 
-    def perform_data_association(self):
+    def find_initial_candidates(self):
         """
-        The function i
+        The function finds an initial set of candidates based on euclidean distance
         """
         distances = []
         candidates = []
         i = self.graphslam.current_index-1
-        # start checking delta_index indexes before i
-        # check from i-delta_index up to the first node
-        # caution, must reach index 0, first pose in graph
-        # Computing Mahalanobis distance
-        # for j in range(i-self.delta_index):
-        #     # caution, using only the x, y pose
-        #     d2 = self.joint_mahalanobis(j, i, only_position=True)
-        #     distances.append(d2)
-        #     # print('Mahalanobis distance between: ', i, j, d2)
-        #     if d2 < self.xi2_threshold:
-        #         candidates.append([i, j])
         for j in range(i-self.delta_index):
             d = self.euclidean_distance(i, j)
             distances.append(d)
             if d < self.euclidean_distance_threshold:
                 candidates.append([i, j])
         return candidates
+
+    def filter_data_associations(self, candidates, transformations):
+        """
+        The function completes the whole data association process using:
+            - Finding an initial set of candidate hypotheses with kmax = 8 and kmin=5
+            - Next computing a set of pairwise probabilities.
+                in order to do so, taking the hypotheses in pairs, we try to form a loop. A probability factor Aij is computed
+                based.
+            - Next, a set of the hypotheses is selected
+
+        Conditions:
+            - The number of candidates must b > 8 in order to be considered for consistency.
+            - The pairwise consistency matrix must have a dominant eigenvalue, indicating that the data can be explained
+              in a single way (lambda1/lambda2 > 2).
+
+        """
+        # candidates = self.find_initial_candidates()
+        if len(candidates) < 8:
+            return []
+        A = self.compute_dijkstra_path(candidates, transformations)
+        A = self.compute_pairwise_consistency_matrix(candidates, transformations)
+        # given the pairwise consistency matrix, find the set of hypotheses that best support the associations
+        confidence, v = outlier_rejection(A)
+        # in this case, the solution is not robust and we should wait to find more candidates.
+        if not confidence:
+            return []
+        filtered_candidates = []
+        for i in range(len(v)):
+            if v[i]:
+                filtered_candidates.append(candidates[i])
+        return filtered_candidates
+
+
+
+    def compute_pairwise_consistency_matrix(self, candidates):
+        """
+        Selects association hypothesis in pairs.
+        For each pair, compute a loop closing transformation and an associated probability
+        """
+        N = len(candidates)
+        A = np.zeros(N, N)
+        # find all combinations of i and j of the hypotheses
+        for i in range(len(candidates)):
+            for j in range(len(candidates)):
+                if i == j:
+                    continue
+                # compute the rigid transformation that connects the candidates.
+                t, S = self.rigid_transformation(candidates[i], candidates[j])
+                A[i][j] = np.exp(np.dot(t, np.dot(S, t.T)))
+        return A
+
+
+    def simulate_observations_SE2(x_gt, observations):
+        """
+        x_gt: ground truth poses
+        A series of relative observations are generated from the ground truth solution x_gt
+        """
+        N = len(observations)
+        edges = []
+        sx = self.icp_noise[0][0]
+        sy = self.icp_noise[1][1]
+        sth = self.icp_noise[2][2]
+        for k in range(N):
+            i = observations[k][0]
+            j = observations[k][1]
+            ti = np.hstack((x_gt[i, 0:2], 0))
+            tj = np.hstack((x_gt[j, 0:2], 0))
+            Ti = HomogeneousMatrix(ti, Euler([0, 0, x_gt[i, 2]]))
+            Tj = HomogeneousMatrix(tj, Euler([0, 0, x_gt[j, 2]]))
+            Tiinv = Ti.inv()
+            zij = Tiinv * Tj
+            zij = zij.t2v()
+            # add noise to the observatoins
+            zij = zij + np.array([np.random.normal(0, sx, 1)[0],
+                                  np.random.normal(0, sy, 1)[0],
+                                  np.random.normal(0, sth, 1)[0]])
+            # np.random.normal([0, 0, 0], [sx, sy, sth], 1)
+            zij[2] = mod_2pi(zij[2])
+            Tij = HomogeneousMatrix([zij[0], zij[1], 0], Euler([0, 0, zij[2]]))
+            edges.append(Tij)
+        return edges
+
 
     def marginal_covariance(self, i):
         # init initial estimate, read from self.current_solution

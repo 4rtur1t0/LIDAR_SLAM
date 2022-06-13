@@ -22,6 +22,8 @@ The gtsam library is used in a SLAM context. When a new laser scan is received:
     - whenever an edge is created between non-consecutive edges, we perform an optimization of the graph. (graph.optimize)
 """
 import numpy as np
+
+from tools.dijkstra_projection import DijkstraProjection
 from tools.euler import Euler
 from tools.homogeneousmatrix import HomogeneousMatrix
 from graphslam.graphslam import GraphSLAM
@@ -33,20 +35,41 @@ prior_rpy_sigma = 0.02
 # Declare the 3D translational standard deviations of the odometry factor's Gaussian model, in meters.
 icp_xyz_sigma = 0.1
 # Declare the 3D rotational standard deviations of the odometry factor's Gaussian model, in degrees.
-icp_rpy_sigma = 0.05
+icp_rpy_sigma = 0.04
 
-PRIOR_NOISE = gtsam.noiseModel.Diagonal.Sigmas(np.array([prior_rpy_sigma*np.pi/180,
-                                                         prior_rpy_sigma*np.pi/180,
-                                                         prior_rpy_sigma*np.pi/180,
-                                                         prior_xyz_sigma,
-                                                         prior_xyz_sigma,
-                                                         prior_xyz_sigma]))
-ICP_NOISE = gtsam.noiseModel.Diagonal.Sigmas(np.array([icp_rpy_sigma*np.pi/180,
-                                                       icp_rpy_sigma*np.pi/180,
-                                                       icp_rpy_sigma*np.pi/180,
-                                                       icp_xyz_sigma,
-                                                       icp_xyz_sigma,
-                                                       icp_xyz_sigma]))
+PRIOR_NOISE_MATRIX = np.array([prior_rpy_sigma*np.pi/180,
+                               prior_rpy_sigma*np.pi/180,
+                               prior_rpy_sigma*np.pi/180,
+                               prior_xyz_sigma,
+                               prior_xyz_sigma,
+                               prior_xyz_sigma])
+ICP_NOISE_MATRIX = np.array([icp_rpy_sigma*np.pi/180,
+                             icp_rpy_sigma*np.pi/180,
+                             icp_rpy_sigma*np.pi/180,
+                             icp_xyz_sigma,
+                             icp_xyz_sigma,
+                             icp_xyz_sigma])
+
+PRIOR_NOISE = gtsam.noiseModel.Diagonal.Sigmas(PRIOR_NOISE_MATRIX)
+ICP_NOISE = gtsam.noiseModel.Diagonal.Sigmas(ICP_NOISE_MATRIX)
+
+
+# x_gt = np.array([[0, 0, 0],  # 0
+#                      [5, 0, 0],  # 1
+#                      [10, 0, 0],  # 2
+#                      [10, 0, np.pi / 2],  # 3
+#                      [10, 5, np.pi / 2],  # 4
+#                      [10, 10, np.pi / 2],  # 5
+#                      [10, 10, np.pi],  # 6
+#                      [5, 10, np.pi],  # 7
+#                      [0, 10, np.pi],  # 8
+#                      [0, 10, 3 * np.pi / 2],  # 9
+#                      [0, 5, 3 * np.pi / 2],  # 10
+#                      [0, 0, 3 * np.pi / 2],  # 11
+#                      [0, 0, 0],  # 12
+#                      [5, 0, 0],  # 13
+#                      [10, 0, 0],  # 14
+#                      [10, 0, np.pi / 2]])  # 15
 
 
 x_gt = np.array([[0, 0, 0],  # 0
@@ -59,12 +82,7 @@ x_gt = np.array([[0, 0, 0],  # 0
                      [5, 10, np.pi],  # 7
                      [0, 10, np.pi],  # 8
                      [0, 10, 3 * np.pi / 2],  # 9
-                     [0, 5, 3 * np.pi / 2],  # 10
-                     [0, 0, 3 * np.pi / 2],  # 11
-                     [0, 0, 0],  # 12
-                     [5, 0, 0],  # 13
-                     [10, 0, 0],  # 14
-                     [10, 0, np.pi / 2]])  # 15
+                     [0, 5, 3 * np.pi / 2]])  # 10
 
 
 def mod_2pi(th):
@@ -114,11 +132,11 @@ def simulate_experiment():
     for i in range(len(x_gt) - 1):
         observations.append([i, i + 1])
     # non-CONSECUTIVE observations
-    observations.extend([[5, 0], [6, 2], [15, 3], [11, 0], [12, 0], [13, 1], [14, 2],
-                         [15, 0], [15, 1], [15, 2], [15, 3]])
-    # observations.extend([[6, 2], [15, 3], [11, 0], [12, 0], [13, 1], [14, 2], [15, 1], [15, 2], [15, 3]])
-    # observations.extend([[6, 2], [15, 3]])
-    # asuming ground truth, simulate an icp with noise in tx, ty, and th
+    # observations.extend([[5, 0], [6, 2], [15, 3], [11, 0], [12, 0], [13, 1], [14, 2],
+    #                      [15, 0], [15, 1], [15, 2], [15, 3]])
+    observations.extend([[5, 3], [6, 2], [9, 6], [2, 0]])
+    # observations.extend([[5, 0]])
+    # assuming ground truth, simulate an icp with noise in tx, ty, and th
     # given a series of relative observations ij
     noise_edges = simulate_observations_SE2(x_gt=x_gt, observations=observations)
     return observations, noise_edges
@@ -128,8 +146,8 @@ def main():
     graphslam = GraphSLAM(icp_noise=ICP_NOISE, prior_noise=PRIOR_NOISE)
     # simulate experiment
     observations, noise_edges = simulate_experiment()
-    # for edge in noise_edges:
-    for k in range(len(observations)):
+    # for k in range(len(observations)):
+    for k in range(10):
         # Vertex j is observed from vertex i
         i = observations[k][0]
         j = observations[k][1]
@@ -145,9 +163,18 @@ def main():
         # or optimizing at every new observation
         # graphslam.optimize()
         graphslam.view_solution2D(skip=1)
-
-    # or optimizing when all information is available
     graphslam.optimize()
+
+
+    # Caution, the dijkstra projection considers a SE2 uncertainty propagation
+    dijkstrap = DijkstraProjection(graphslam.current_estimate, observations, Sigmaij=np.diag([icp_xyz_sigma,
+                                                                                              icp_xyz_sigma,
+                                                                                              icp_rpy_sigma]))
+    shortest_path, Sigma_ab = dijkstrap.compute_shortest_path(10, 0)
+    print('Shortest uncertainty path: ', shortest_path)
+    print('Sigma_ab: ', Sigma_ab)
+    # or optimizing when all information is available
+
 
 
 if __name__ == "__main__":

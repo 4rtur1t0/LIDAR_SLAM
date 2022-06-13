@@ -5,7 +5,8 @@ The slam_tutorial presents the case in which a robot moves along the environment
 relative transformations between the poses in the graph (a fact that is frequent, for example, if we can perform
 a scanmatching between the scans captured at each of the poses).
 
-This first example considers that data associations are known!
+In this second example DA is considered to be unknown. At each time step, a Sigma_ji conditioned covariance matrix
+is computed. The data association is associated to the past
 
 The simulate_function considers that the robot travels around a set of poses. The robot is capable of observing the
 relative transformation between consecutive poses. In addition, the robot is able to observe poses that were visited
@@ -20,12 +21,16 @@ The gtsam library is used in a SLAM context. When a new laser scan is received:
     - graphslam.add_non_consecutive_observation(i, j, atb) is called.
     - this method creates an edge between vertices i and j.
     - whenever an edge is created between non-consecutive edges, we perform an optimization of the graph. (graph.optimize)
+
 """
 import numpy as np
+from graphslam.dataassociation import DataAssociation
+from tools.dijkstra_projection import DijkstraProjectionRelative
 from tools.euler import Euler
 from tools.homogeneousmatrix import HomogeneousMatrix
 from graphslam.graphslam import GraphSLAM
 import gtsam
+from tools.conversions import mod_2pi
 
 prior_xyz_sigma = 0.05
 # Declare the 3D rotational standard deviations of the prior factor's Gaussian model, in degrees.
@@ -48,31 +53,34 @@ ICP_NOISE = gtsam.noiseModel.Diagonal.Sigmas(np.array([icp_rpy_sigma*np.pi/180,
                                                        icp_xyz_sigma,
                                                        icp_xyz_sigma]))
 
+ICP_NOISE_DA = np.diag([prior_xyz_sigma, prior_xyz_sigma, prior_rpy_sigma])
 
 x_gt = np.array([[0, 0, 0],  # 0
-                     [5, 0, 0],  # 1
-                     [10, 0, 0],  # 2
-                     [10, 0, np.pi / 2],  # 3
-                     [10, 5, np.pi / 2],  # 4
-                     [10, 10, np.pi / 2],  # 5
-                     [10, 10, np.pi],  # 6
-                     [5, 10, np.pi],  # 7
-                     [0, 10, np.pi],  # 8
-                     [0, 10, 3 * np.pi / 2],  # 9
-                     [0, 5, 3 * np.pi / 2],  # 10
-                     [0, 0, 3 * np.pi / 2],  # 11
-                     [0, 0, 0],  # 12
-                     [5, 0, 0],  # 13
-                     [10, 0, 0],  # 14
-                     [10, 0, np.pi / 2]])  # 15
-
-
-def mod_2pi(th):
-    """
-    Return theta in [-pi, pi]
-    """
-    thetap = np.arctan2(np.sin(th), np.cos(th))
-    return thetap
+             [5, 0, 0],  # 1
+             [10, 0, 0],  # 2
+             [10, 0, np.pi / 2],  # 3
+             [10, 5, np.pi / 2],  # 4
+             [10, 10, np.pi / 2],  # 5
+             [10, 10, np.pi],  # 6
+             [5, 10, np.pi],  # 7
+             [0, 10, np.pi],  # 8
+             [0, 10, 3 * np.pi / 2],  # 9
+             [0, 5, 3 * np.pi / 2],  # 10
+             [0, 0, 3 * np.pi / 2],  # 11
+             [0, 0, 0],  # 12
+             [5, 0, 0],  # 13
+             [10, 0, 0],  # 14
+             [10, 0, np.pi/2],
+                 [10, 5, np.pi / 2],  # 4
+                 [10, 10, np.pi / 2],  # 5
+                 [10, 10, np.pi],  # 6
+                 [5, 10, np.pi],  # 7
+                 [0, 10, np.pi],  # 8
+                 [0, 10, 3 * np.pi / 2],  # 9
+                 [0, 5, 3 * np.pi / 2],  # 10
+                 [0, 0, 3 * np.pi / 2],  # 11
+                 [0, 0, 0],  # 12
+                 [5, 0, 0]])  # 15
 
 
 def simulate_observations_SE2(x_gt, observations):
@@ -106,48 +114,54 @@ def simulate_observations_SE2(x_gt, observations):
     return edges
 
 
-def simulate_experiment():
-    print('GRAPHSLAM')
-    # SIMULATE MAPPING PROCESS. First, simulate odometry
-    # correspondences consecutive observations (imu, odometry, ICP)
-    observations = []
-    for i in range(len(x_gt) - 1):
-        observations.append([i, i + 1])
-    # non-CONSECUTIVE observations
-    observations.extend([[5, 0], [6, 2], [15, 3], [11, 0], [12, 0], [13, 1], [14, 2],
-                         [15, 0], [15, 1], [15, 2], [15, 3]])
-    # observations.extend([[6, 2], [15, 3], [11, 0], [12, 0], [13, 1], [14, 2], [15, 1], [15, 2], [15, 3]])
-    # observations.extend([[6, 2], [15, 3]])
-    # asuming ground truth, simulate an icp with noise in tx, ty, and th
-    # given a series of relative observations ij
-    noise_edges = simulate_observations_SE2(x_gt=x_gt, observations=observations)
-    return observations, noise_edges
+def simulate_observations(associations):
+    atbs = []
+    for assoc in associations:
+        # caution: we need a true observation! atb
+        atb = simulate_observations_SE2(x_gt=x_gt, observations=[assoc])
+        # TODO: add non gaussian noise to atb with probability p
+        atbs.append(atb)
+    return atbs
 
 
 def main():
     graphslam = GraphSLAM(icp_noise=ICP_NOISE, prior_noise=PRIOR_NOISE)
-    # simulate experiment
-    observations, noise_edges = simulate_experiment()
-    # for edge in noise_edges:
-    for k in range(len(observations)):
+    # create the Data Association object
+    dassoc = DataAssociation(graphslam, xi2_th=20.0, icp_noise=ICP_NOISE_DA)
+
+    for k in range(1, len(x_gt)):
         # Vertex j is observed from vertex i
-        i = observations[k][0]
-        j = observations[k][1]
-        atb = noise_edges[k]
+        i = k-1
+        j = k
+        atb = simulate_observations_SE2(x_gt=x_gt, observations=[[i, j]])
         # consecutive edges. Adds a new node
-        if j-i == 1:
-            graphslam.add_consecutive_observation(atb)
-        # non-consecutive edges: i. e. loop closing
-        else:
-            graphslam.add_loop_closing_observation(i, j, atb)
-            # optimizing whenever non_consecutive observations are performed (loop closing)
-            graphslam.optimize()
+        graphslam.add_consecutive_observation(atb[0])
+        dijkstra_algorithm = DijkstraProjectionRelative(np.diag([0.2, 0.2, 0.1]))
+        dijkstra_algorithm.connect_nodes(i, j, iTj=atb)
+
+        # now check for possible data associations. Initial set of candidates
+        associations = dassoc.find_initial_candidates()
+        # simulate observations for each association
+        atbs = simulate_observations(associations)
+
+        # non-consecutive edges for filtered associations
+        # for assoc in associations:
+        for i in range(len(associations)):
+            # i, j. node j observed from node i
+            graphslam.add_loop_closing_observation(associations[i][0], associations[i][1], atbs[i])
+
+
+        dijkstra_algorithm.print()
+        # select source and finish nodes
+        shortest_path = dijkstra_algorithm.compute_shortest_path(source=0, finish=7)
+        # Print the result
+        dijkstra_algorithm.print()
         # or optimizing at every new observation
         # graphslam.optimize()
-        graphslam.view_solution2D(skip=1)
-
+        # graphslam.view_solution()
     # or optimizing when all information is available
     graphslam.optimize()
+    graphslam.view_solution2D(skip=1)
 
 
 if __name__ == "__main__":

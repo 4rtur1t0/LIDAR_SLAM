@@ -42,20 +42,11 @@ class GraphSLAM():
         self.n_edges = self.n_edges + 1
         k = self.current_index
         # add consecutive observation
-        # self.graph.add(gtsam.BetweenFactorPose2(k, k+1, gtsam.Pose2(atb[0], atb[1], atb[2]), self.ICP_NOISE))
         self.graph.add(gtsam.BetweenFactorPose3(k, k + 1, gtsam.Pose3(atb.array), self.ICP_NOISE))
-
         # compute next estimation
         next_estimate = self.current_estimate.atPose3(k).compose(gtsam.Pose3(atb.array))
         self.temp_estimate.insert(k + 1, next_estimate)
         self.current_index = k + 1
-        # compound relative transformation to the last pose
-        # cs = self.current_solution[-1]
-        # T = HomogeneousMatrix([cs[0], cs[1], 0], Euler([0, 0, cs[2]]))
-        # Trel = HomogeneousMatrix([atb[0], atb[1], 0], Euler([0, 0, atb[2]]))
-        # T = T*Trel
-        # concatenate prior solution
-        # self.current_solution = np.vstack((self.current_solution, T.t2v()))
 
     def add_loop_closing_observation(self, i, j, aTb):
         """
@@ -63,8 +54,7 @@ class GraphSLAM():
         Add a vertex considering a loop closing observation where i-j > 1
         """
         self.n_edges = self.n_edges + 1
-        # add non consecutive observation
-        # self.graph.add(gtsam.BetweenFactorPose2(int(i), int(j), gtsam.Pose2(aTb[0], aTb[1], aTb[2]), self.ICP_NOISE))
+        # add loop closing observation
         self.graph.add(gtsam.BetweenFactorPose3(i, j, gtsam.Pose3(aTb.array), self.ICP_NOISE))
 
     def optimize(self):
@@ -117,7 +107,47 @@ class GraphSLAM():
         #     self.current_solution.append(np.array([x, y, th]))
         # self.current_solution = np.array(self.current_solution)
 
-    def view_solution(self):
+
+    def view_solution2D(self, skip=20):
+        """Print and plot incremental progress of the robot for 2D Pose SLAM using iSAM2.
+        Converting from Pose3 to Pose2.
+        Be careful when converting the marginal
+        """
+
+        # Print the current estimates computed using iSAM2.
+        print("*" * 50 + f"\nInference after State:\n", self.current_index)
+        # print(self.current_estimate)
+
+        # Compute the marginals for all states in the graph.
+        marginals = gtsam.Marginals(self.graph, self.current_estimate)
+
+        # Plot the newly updated iSAM2 inference.
+        fig = plt.figure(0)
+        # axes = fig.gca(projection='3d')
+        plt.cla()
+
+        i = 0
+        while self.current_estimate.exists(i):
+            pose3 = self.current_estimate.atPose3(i)
+            x = pose3.translation()[0]
+            y = pose3.translation()[1]
+            th = pose3.rotation().ypr()[0]
+            pose2 = gtsam.Pose2(x=x, y=y, theta=th)
+            marginal3 = marginals.marginalCovariance(i)
+            # caution, marginals are in rpy x y z
+            # here converting to a 2 marginal and forgetting about theta
+            marginal2 = marginal3[3:6, 3:6]
+            gtsam_plot.plot_pose2(0, pose2, 1,  marginal2)
+            i += skip
+            print('Pose: ', i, 'det(S): ', np.linalg.det(marginal2))
+
+        # axes.set_xlim3d(-50, 50)
+        # axes.set_ylim3d(-50, 50)
+        # axes.set_zlim3d(-50, 50)
+        plt.pause(0.05)
+
+
+    def view_solution(self, skip=20):
         """Print and plot incremental progress of the robot for 2D Pose SLAM using iSAM2."""
 
         # Print the current estimates computed using iSAM2.
@@ -136,7 +166,7 @@ class GraphSLAM():
         while self.current_estimate.exists(i):
             gtsam_plot.plot_pose3(0, self.current_estimate.atPose3(i), 1,
                                   marginals.marginalCovariance(i))
-            i += 20
+            i += skip
 
         axes.set_xlim3d(-50, 50)
         axes.set_ylim3d(-50, 50)
