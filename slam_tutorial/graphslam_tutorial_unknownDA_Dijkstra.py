@@ -36,9 +36,9 @@ prior_xyz_sigma = 0.05
 # Declare the 3D rotational standard deviations of the prior factor's Gaussian model, in degrees.
 prior_rpy_sigma = 0.02
 # Declare the 3D translational standard deviations of the odometry factor's Gaussian model, in meters.
-icp_xyz_sigma = 0.1
+icp_xyz_sigma = 0.01
 # Declare the 3D rotational standard deviations of the odometry factor's Gaussian model, in degrees.
-icp_rpy_sigma = 0.05
+icp_rpy_sigma = 0.005
 
 PRIOR_NOISE = gtsam.noiseModel.Diagonal.Sigmas(np.array([prior_rpy_sigma*np.pi/180,
                                                          prior_rpy_sigma*np.pi/180,
@@ -114,54 +114,146 @@ def simulate_observations_SE2(x_gt, observations):
     return edges
 
 
-def simulate_observations(associations):
-    atbs = []
-    for assoc in associations:
-        # caution: we need a true observation! atb
-        atb = simulate_observations_SE2(x_gt=x_gt, observations=[assoc])
-        # TODO: add non gaussian noise to atb with probability p
-        atbs.append(atb)
-    return atbs
+def compute_pairwise_consistency(graphslam, dijkstra_algorithm, candidates, atbs):
+
+    # t0abs = simulate_observations_SE2(x_gt=x_gt, observations=candidates)
+    Tm1 = atbs[0]
+    Tm2 = atbs[1].inv()
+
+    dijkstra_algorithm.set_poses(graphslam.current_estimate)
+    source = candidates[0][1]
+    finish = candidates[1][1]
+    # select source and finish nodes
+    shortest_path1, Tab1, Sab1 = dijkstra_algorithm.compute_shortest_path(source=source, finish=finish)
+
+    source = candidates[1][0]
+    finish = candidates[0][0]
+    shortest_path2, Tab2, Sab2 = dijkstra_algorithm.compute_shortest_path(source=source, finish=finish)
+
+    print('Shortest path found 1: ', shortest_path1)
+    print('Shortest path found 2: ', shortest_path2)
+    print('Sigma AB1: ', Sab1)
+    print('Sigma AB2: ', Sab2)
+    print('Transformation AB: ', Tab1)
+    print('Transformation AB: ', Tab2)
+
+    I = Tm1*Tab1*Tm2*Tab2
+    s = I.t2v()
+    print('Loop closing constraint: I:', I)
+    print('Loop closing constraint: s:', s)
+    t0 = np.array([0, 0, 0])
+    t1 = Tm1.t2v(n=3)
+    t2 = (Tm1*Tab1).t2v()
+    t3 = (Tm1*Tab1*Tm2).t2v()
+    t4 = (Tm1 * Tab1 * Tm2*Tab2).t2v()
+    # icp noise matrix for measurements
+    Sij = np.diag([icp_xyz_sigma, icp_xyz_sigma, icp_rpy_sigma])
+    # propagate uncertainty, Measured, Dijkstra, Measured, Dijstra
+    S0 = propagate_uncertainty(ti=t0, tj=t1, Si=np.diag([0, 0, 0]), Sij=Sij)
+    S1 = propagate_uncertainty(ti=t1, tj=t2, Si=S0, Sij=Sab1)
+    S2 = propagate_uncertainty(ti=t2, tj=t3, Si=S1, Sij=Sij)
+    S4 = propagate_uncertainty(ti=t3, tj=t4, Si=S2, Sij=Sab2)
+
+    # compute pairwise consistency. Mahalanobis distance
+    Dij = np.dot(s, np.dot(np.linalg.inv(S4), s.T))
+    Aij = np.exp(Dij)
+    print('Loop closing distance: D:', I)
+    return Aij, Dij
+
+
+def propagate_uncertainty(ti, tj, Si, Sij):
+    """
+    Computes a Gaussian linear propagation law based on the uncertainty on node u and the relative uncertainty
+    between u and v
+    """
+    Ti = HomogeneousMatrix(np.array([ti[0], ti[1], 0]), Euler([0, 0, ti[2]]))
+    Tj = HomogeneousMatrix(np.array([tj[0], tj[1], 0]), Euler([0, 0, tj[2]]))
+    Tij = Ti.inv()*Tj
+    tij = Tij.t2v()
+    [J1, J2] = compute_jacobians(ti, tij)
+    Sj = np.dot(J1, np.dot(Si, J1.T)) + np.dot(J2, np.dot(Sij, J2.T))
+    return Sj
+
+
+def compute_jacobians(ti, tij):
+    """
+    Computes Jacobians for the variables in ti and tij
+    """
+    ci = np.cos(ti[2])
+    si = np.sin(ti[2])
+    xij = tij[0]
+    yij = tij[1]
+    J1 = np.array([[1,  0, - si * xij - ci * yij],
+                   [0,  1,  ci * xij - si * yij],
+                   [0,  0,      1]])
+    J2 = np.array([[ci, - si,   0],
+                   [si,  ci,    0],
+                   [0,  0,     1]])
+    return J1, J2
+
 
 
 def main():
     graphslam = GraphSLAM(icp_noise=ICP_NOISE, prior_noise=PRIOR_NOISE)
     # create the Data Association object
     dassoc = DataAssociation(graphslam, xi2_th=20.0, icp_noise=ICP_NOISE_DA)
+    dijkstra_algorithm = DijkstraProjectionRelative(np.diag([icp_xyz_sigma, icp_xyz_sigma, icp_rpy_sigma]))
+    dijkstra_algorithm.add_node()
 
-    for k in range(1, len(x_gt)):
+    # Constructs the graph for data association
+    # loop closing associations are not included in the graph
+    for k in range(1, 16):
         # Vertex j is observed from vertex i
         i = k-1
         j = k
         atb = simulate_observations_SE2(x_gt=x_gt, observations=[[i, j]])
         # consecutive edges. Adds a new node
         graphslam.add_consecutive_observation(atb[0])
-        dijkstra_algorithm = DijkstraProjectionRelative(np.diag([0.2, 0.2, 0.1]))
-        dijkstra_algorithm.connect_nodes(i, j, iTj=atb)
-
+        # adding nodes for the Dijkstra projection
+        dijkstra_algorithm.add_node()
+        dijkstra_algorithm.connect_nodes(i, j)
         # now check for possible data associations. Initial set of candidates
-        associations = dassoc.find_initial_candidates()
+        # associations = dassoc.find_initial_candidates()
         # simulate observations for each association
-        atbs = simulate_observations(associations)
-
+        # atbs = simulate_observations_SE2(x_gt=x_gt, observations=associations)
+        # associations = dassoc.filter_data_associations(dijskstra=dijkstra_algorithm, candidates=associations, transformations=atbs)
         # non-consecutive edges for filtered associations
-        # for assoc in associations:
-        for i in range(len(associations)):
-            # i, j. node j observed from node i
-            graphslam.add_loop_closing_observation(associations[i][0], associations[i][1], atbs[i])
+        # for i in range(len(associations)):
+        #     # i, j. node j observed from node i
+        #     graphslam.add_loop_closing_observation(associations[i][0], associations[i][1], atbs[i])
+        #     dijkstra_algorithm.connect_nodes(i, j)
 
-
-        dijkstra_algorithm.print()
-        # select source and finish nodes
-        shortest_path = dijkstra_algorithm.compute_shortest_path(source=0, finish=7)
-        # Print the result
-        dijkstra_algorithm.print()
-        # or optimizing at every new observation
-        # graphslam.optimize()
-        # graphslam.view_solution()
-    # or optimizing when all information is available
-    graphslam.optimize()
     graphslam.view_solution2D(skip=1)
+
+    # DATA ASSOCIATION
+    #candidates = [[12, 0], [2, 12]]
+    candidates = [[11, 1],
+                  [13, 3],
+                  [15, 0],
+                  [15, 1],
+                  [14, 0],
+                  [14, 3]]
+    atbs = simulate_observations_SE2(x_gt=x_gt, observations=candidates)
+    N = len(candidates)
+    A = np.zeros((N, N))
+    D = np.zeros((N, N))
+    for i in range(0, N):
+        for j in range(i+1, N):
+            if i == j:
+                continue
+            pair_candidates = [candidates[i], candidates[j]]
+            pair_transforms = [atbs[i], atbs[j]]
+            # computes pairwise consistency between two candidates!
+            Aij, Dij = compute_pairwise_consistency(graphslam, dijkstra_algorithm, pair_candidates, pair_transforms)
+            A[i][j] = Aij
+            A[j][i] = Aij
+            D[i][j] = Dij
+            D[j][i] = Dij
+    print(A)
+    print(D)
+    # or optimizing when all information is available
+    # graphslam.optimize()
+    # graphslam.view_solution2D(skip=1)
 
 
 if __name__ == "__main__":

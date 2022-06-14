@@ -113,7 +113,6 @@ class GraphSLAM():
         Converting from Pose3 to Pose2.
         Be careful when converting the marginal
         """
-
         # Print the current estimates computed using iSAM2.
         print("*" * 50 + f"\nInference after State:\n", self.current_index)
         # print(self.current_estimate)
@@ -139,7 +138,7 @@ class GraphSLAM():
             marginal2 = marginal3[3:6, 3:6]
             gtsam_plot.plot_pose2(0, pose2, 1,  marginal2)
             i += skip
-            print('Pose: ', i, 'det(S): ', np.linalg.det(marginal2))
+            print('Pose: ', i, ' (x, y, th): ', pose2, ' det(S): ', np.linalg.det(marginal2))
 
         # axes.set_xlim3d(-50, 50)
         # axes.set_ylim3d(-50, 50)

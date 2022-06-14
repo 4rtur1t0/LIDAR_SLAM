@@ -33,7 +33,7 @@ class DataAssociation():
                 candidates.append([i, j])
         return candidates
 
-    def filter_data_associations(self, candidates, transformations):
+    def filter_data_associations(self, dijskstra, candidates, transformations):
         """
         The function completes the whole data association process using:
             - Finding an initial set of candidate hypotheses with kmax = 8 and kmin=5
@@ -48,10 +48,9 @@ class DataAssociation():
               in a single way (lambda1/lambda2 > 2).
 
         """
-        # candidates = self.find_initial_candidates()
         if len(candidates) < 8:
             return []
-        A = self.compute_dijkstra_path(candidates, transformations)
+        Sab, Tab = dijskstra.compute_dijkstra_path(candidates, transformations)
         A = self.compute_pairwise_consistency_matrix(candidates, transformations)
         # given the pairwise consistency matrix, find the set of hypotheses that best support the associations
         confidence, v = outlier_rejection(A)

@@ -63,8 +63,6 @@ class DijkstraProjection():
     def print(self):
         print('Graph:')
         print(self.graph)
-        # print('Weights: ')
-        # print(self.weights)
         print('Distance from source: ')
         for i in range(self.nnodes):
             print('Node ', i, ': ', self.dists[i])
@@ -77,8 +75,6 @@ class DijkstraProjection():
                 print('Node ', i, ' min dist: ', self.dists[i])
         print('Parent array of shortest paths: ')
         print(self.shortest_paths)
-        # print('Shortest path from source to finish: ')
-        # print(self.shortest_path)
 
     def store_shortest_path(self, source, finish):
         """
@@ -212,6 +208,8 @@ class DijkstraProjectionRelative():
         self.shortest_paths = [] # np.array([-1] * self.nnodes)
         self.shortest_path = []
         # self.init_poses(current_estimate, observations=observations)
+        # self.rel_transforms = {}
+        self.poses = []
 
     # def init_poses(self, current_estimate, observations):
     #     """
@@ -234,12 +232,44 @@ class DijkstraProjectionRelative():
     #     for observation in observations:
     #         self.connect_nodes(observation[0], observation[1])
 
-    def connect_nodes(self, i, j, iTj):
+    def add_node(self):
+        """
+        Adds a new node to the graph.
+        Adds a row and column to the graph matrix.
+        """
+        self.graph = np.pad(self.graph, ((0, 1), (0, 1)), mode='constant', constant_values=0)
+        self.nnodes = self.nnodes + 1
+        self.poses.append(np.array([0, 0, 0]))
+        self.Sigmas.append(np.diag([0, 0, 0]))
+
+    def connect_nodes(self, i, j):
         """
         Asumes different costs when going from i to j and viceversa
+        grows the graph
+        Store the relative transformation.
         """
         self.graph[i, j] = True
         self.graph[j, i] = True
+        # self.add_rel_transforms(i, j, iTj)
+
+    # def add_rel_transforms(self, i, j, iTj):
+    #     """
+    #     Adds the transformation between node i and node j and viceversa.
+    #     """
+    #     key = str(i) + ',' + str(j)
+    #     self.rel_transforms[key] = iTj
+    #     key = str(j) + ',' + str(i)
+    #     self.rel_transforms[key] = iTj.inv()
+
+    # def get_rel_transform(self, i, j):
+    #     """
+    #     Return the transformation between the node i and node j
+    #     """
+    #     key = str(j) + ',' + str(i)
+    #     try:
+    #         return self.rel_transforms[key]
+    #     except KeyError:
+    #         return None
 
     def is_connected(self, i, j):
         if self.graph[i, j]:
@@ -250,8 +280,6 @@ class DijkstraProjectionRelative():
     def print(self):
         print('Graph:')
         print(self.graph)
-        # print('Weights: ')
-        # print(self.weights)
         print('Distance from source: ')
         for i in range(self.nnodes):
             print('Node ', i, ': ', self.dists[i])
@@ -264,8 +292,17 @@ class DijkstraProjectionRelative():
                 print('Node ', i, ' min dist: ', self.dists[i])
         print('Parent array of shortest paths: ')
         print(self.shortest_paths)
-        # print('Shortest path from source to finish: ')
-        # print(self.shortest_path)
+
+    def set_poses(self, current_estimate):
+        i = 0
+        while current_estimate.exists(i):
+            pose3 = current_estimate.atPose3(i)
+            x = pose3.translation()[0]
+            y = pose3.translation()[1]
+            th = pose3.rotation().ypr()[0]
+            self.poses[i] = np.array([x, y, th])
+            i += 1
+
 
     def store_shortest_path(self, source, finish):
         """
@@ -302,7 +339,7 @@ class DijkstraProjectionRelative():
             if not self.is_connected(v, u):
                 continue
             # if connected, propagate uncertainty, compute determinant and sum to total distance at node u
-            Sigmau = self.propagate_uncertainty(v, u)
+            Sigmau, Tij = self.propagate_uncertainty(v, u)
             # caution, in a vanilla Dijkstra's algorithm, we may find here an addition,
             # however, the sum of distances (the propagation via Jacobians) is computed in self.propagate_uncertainty
             # thus, the total distance from node v to node u is actually the determinant of the covariance matrix Sigma_uv
@@ -321,16 +358,18 @@ class DijkstraProjectionRelative():
         Computes a Gaussian linear propagation law based on the uncertainty on node u and the relative uncertainty
         between u and v
         """
-        Ti = self.poses[u]
-        Tj = self.poses[v]
-        Tij = np.dot(Ti.inv(), Tj)
-        ti = Ti.t2v()
+        ti = self.poses[u]
+        tj = self.poses[v]
+        Ti = HomogeneousMatrix(np.array([ti[0], ti[1], 0]), Euler([0, 0, ti[2]]))
+        Tj = HomogeneousMatrix(np.array([tj[0], tj[1], 0]), Euler([0, 0, tj[2]]))
+        # Tij = self.get_rel_transform(u, v)
+        Tij = Ti.inv()*Tj
         tij = Tij.t2v()
         [J1, J2] = self.compute_jacobians(ti, tij)
         Si = self.Sigmas[u]
         Sij = self.Sigmaij
         Sj = np.dot(J1, np.dot(Si, J1.T)) + np.dot(J2, np.dot(Sij, J2.T))
-        return Sj
+        return Sj, Tij
 
     def compute_jacobians(self, ti, tij):
         """
@@ -348,6 +387,14 @@ class DijkstraProjectionRelative():
                        [0,  0,     1]])
         return J1, J2
 
+    def compute_relative_transformation_path(self, source, finish):
+        ta = self.poses[source]
+        tb = self.poses[finish]
+        Ta = HomogeneousMatrix(np.array([ta[0], ta[1], 0]), Euler([0, 0, ta[2]]))
+        Tb = HomogeneousMatrix(np.array([tb[0], tb[1], 0]), Euler([0, 0, tb[2]]))
+        Tab = Ta.inv()*Tb
+        return Tab
+
     def compute_shortest_path(self, source, finish):
         """
         Computes the shortest path in terms of uncertainty. The total distance from source to finish is
@@ -358,6 +405,10 @@ class DijkstraProjectionRelative():
         self.dists = np.array([sys.maxsize] * self.nnodes, dtype=float)
         # Initialize the source with the min value now
         self.dists[source] = 0
+        self.S = [False] * self.nnodes
+        self.shortest_paths = np.array([-1] * self.nnodes)
+        self.shortest_path = []
+
         # while all nodes are not visited
         for i in range(self.nnodes):
             # select the element of Q with the min distance
@@ -370,8 +421,11 @@ class DijkstraProjectionRelative():
             # the uncertainty matrix at each node (self.Sigmas) is also updated to allow for error propagation.
             self.update_distances(v)
             self.print()
+        # stores the shortest path in self.shortest_path as node indexes
         self.store_shortest_path(source=source, finish=finish)
-        return self.shortest_path, self.Sigmas[finish]
+        # source, finish transformation
+        Tab = self.compute_relative_transformation_path(source=source, finish=finish)
+        return self.shortest_path, Tab, self.Sigmas[finish]
 
 
 
