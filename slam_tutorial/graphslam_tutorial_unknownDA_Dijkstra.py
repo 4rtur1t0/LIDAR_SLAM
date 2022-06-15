@@ -114,18 +114,47 @@ def simulate_observations_SE2(x_gt, observations):
     return edges
 
 
+def compute_pairwise_consistency_matrix(graphslam, dijkstra_algorithm, candidates, atbs):
+    """
+    Given a set of candidate hypotheses with N > 1. Each data association is accompanied by a computed transformation
+    i.e. using ICP.
+    Arrange the correspondences in pairs.
+    Compute a loop closing transformation.
+    Compute A mahalanobis distance s.TSs
+    """
+    N = len(candidates)
+    A = np.zeros((N, N))
+    D = np.zeros((N, N))
+    for i in range(0, N):
+        for j in range(i+1, N):
+            if i == j:
+                continue
+            pair_candidates = [candidates[i], candidates[j]]
+            pair_transforms = [atbs[i], atbs[j]]
+            # computes pairwise consistency between two candidates!
+            Aij, Dij = compute_pairwise_consistency(graphslam, dijkstra_algorithm, pair_candidates, pair_transforms)
+            A[i][j] = Aij
+            A[j][i] = Aij
+            D[i][j] = Dij
+            D[j][i] = Dij
+    return A, D
+
+
 def compute_pairwise_consistency(graphslam, dijkstra_algorithm, candidates, atbs):
-
-    # t0abs = simulate_observations_SE2(x_gt=x_gt, observations=candidates)
+    # the first measurement corresponds to the first correspondence hypothesis
     Tm1 = atbs[0]
+    # the second measurement corresponds to the second correspondence hypothesis
+    # it is inverted, given the order in which the transformations are performed
     Tm2 = atbs[1].inv()
-
+    # set the absolute poses for each node in the dijkstra algorithm
     dijkstra_algorithm.set_poses(graphslam.current_estimate)
     source = candidates[0][1]
     finish = candidates[1][1]
-    # select source and finish nodes
+    # select source and finish nodes, obtain, the path, relative transformation and relative uncertainty using
+    # the Dijkstra projection
     shortest_path1, Tab1, Sab1 = dijkstra_algorithm.compute_shortest_path(source=source, finish=finish)
-
+    # again, select source and finish nodes, obtain, the path, relative transformation and relative uncertainty using
+    # the Dijkstra projection
     source = candidates[1][0]
     finish = candidates[0][0]
     shortest_path2, Tab2, Sab2 = dijkstra_algorithm.compute_shortest_path(source=source, finish=finish)
@@ -136,7 +165,8 @@ def compute_pairwise_consistency(graphslam, dijkstra_algorithm, candidates, atbs
     print('Sigma AB2: ', Sab2)
     print('Transformation AB: ', Tab1)
     print('Transformation AB: ', Tab2)
-
+    # compute the loop closing tranformation, that includes: a measured transformation corresponding with the
+    # data association. A transformation based on Dijkstra path. Another measured data association
     I = Tm1*Tab1*Tm2*Tab2
     s = I.t2v()
     print('Loop closing constraint: I:', I)
@@ -157,7 +187,7 @@ def compute_pairwise_consistency(graphslam, dijkstra_algorithm, candidates, atbs
     # compute pairwise consistency. Mahalanobis distance
     Dij = np.dot(s, np.dot(np.linalg.inv(S4), s.T))
     Aij = np.exp(Dij)
-    print('Loop closing distance: D:', I)
+    # print('Loop closing distance: D:', I)
     return Aij, Dij
 
 
@@ -201,7 +231,7 @@ def main():
     dijkstra_algorithm.add_node()
 
     # Constructs the graph for data association
-    # loop closing associations are not included in the graph
+    # caution, loop closing associations are not included in this graph
     for k in range(1, 16):
         # Vertex j is observed from vertex i
         i = k-1
@@ -212,48 +242,50 @@ def main():
         # adding nodes for the Dijkstra projection
         dijkstra_algorithm.add_node()
         dijkstra_algorithm.connect_nodes(i, j)
-        # now check for possible data associations. Initial set of candidates
-        # associations = dassoc.find_initial_candidates()
-        # simulate observations for each association
-        # atbs = simulate_observations_SE2(x_gt=x_gt, observations=associations)
-        # associations = dassoc.filter_data_associations(dijskstra=dijkstra_algorithm, candidates=associations, transformations=atbs)
-        # non-consecutive edges for filtered associations
-        # for i in range(len(associations)):
-        #     # i, j. node j observed from node i
-        #     graphslam.add_loop_closing_observation(associations[i][0], associations[i][1], atbs[i])
-        #     dijkstra_algorithm.connect_nodes(i, j)
 
     graphslam.view_solution2D(skip=1)
 
     # DATA ASSOCIATION
     #candidates = [[12, 0], [2, 12]]
     candidates = [[11, 1],
+                  [11, 0],
+                  [11, 3],
                   [13, 3],
                   [15, 0],
                   [15, 1],
                   [14, 0],
                   [14, 3]]
     atbs = simulate_observations_SE2(x_gt=x_gt, observations=candidates)
-    N = len(candidates)
-    A = np.zeros((N, N))
-    D = np.zeros((N, N))
-    for i in range(0, N):
-        for j in range(i+1, N):
+    # two observations of the set are corrupted
+    atbs[0] = HomogeneousMatrix(np.eye(4))
+    atbs[2] = HomogeneousMatrix(np.eye(4))
+    [A, D] = compute_pairwise_consistency_matrix(graphslam, dijkstra_algorithm, candidates, atbs)
+
+    # print values
+    for i in range(0, len(candidates)):
+        for j in range(i+1, len(candidates)):
             if i == j:
                 continue
-            pair_candidates = [candidates[i], candidates[j]]
-            pair_transforms = [atbs[i], atbs[j]]
-            # computes pairwise consistency between two candidates!
-            Aij, Dij = compute_pairwise_consistency(graphslam, dijkstra_algorithm, pair_candidates, pair_transforms)
-            A[i][j] = Aij
-            A[j][i] = Aij
-            D[i][j] = Dij
-            D[j][i] = Dij
-    print(A)
-    print(D)
-    # or optimizing when all information is available
-    # graphslam.optimize()
-    # graphslam.view_solution2D(skip=1)
+            print('Candidate: ', i, 'with candidate: ', j)
+            print(D[i][j])
+
+    # now select the valid hypotheses based on the joint Mahalanobis distances
+    likelihood_candidates = np.zeros(len(candidates))
+    for i in range(0, len(candidates)):
+        for j in range(0, len(candidates)):
+            if i == j:
+                continue
+            if D[i][j] < 3:
+                likelihood_candidates[i] += 1
+                likelihood_candidates[j] += 1
+    # filter good candidates
+    likelihood_candidates = likelihood_candidates/np.sum(likelihood_candidates)
+    idx = np.nonzero(likelihood_candidates)[0]
+    candidates = np.array(candidates)
+    candidates = candidates[idx]
+    print('Likelihood candidates: ', likelihood_candidates)
+    print('VALID HYPOTHESES ARE: ')
+    print(candidates)
 
 
 if __name__ == "__main__":
