@@ -1,4 +1,5 @@
-directory: '/home/arvc/Escritorio/develop/Registration/dos_vueltas_features/'
+#directory: '/home/arvc/Escritorio/develop/Registration/dos_vueltas_features/'
+directory: '/media/arvc/INTENSO/DATASETS/dos_vueltas_long_range'
 
 down_sample:
   voxel_size: 0.03 # Number or None
@@ -14,13 +15,11 @@ filter_ground_plane:
 
 normals:
   maximum_neighbors: 50
-#  maximum_neighbors: 200
   radius_normals: 0.5
-#  radius_normals: 0.5
 
 icp:
   point2: 'plane'
-  distance_threshold: 1
+  distance_threshold: 7
   step: 5
 
 visualization:
@@ -28,6 +27,6 @@ visualization:
   registration_result: false
 
 experiment:
-  deltaxy: [0.2]
-  deltath: 0.1
+  deltaxy: 0.1
+  deltath: 0.05
   long: 600

@@ -12,7 +12,7 @@ class SCDescriptor():
         """
         self.max_radius = max_radius
         self.nr = 40
-        self.nc = 80
+        self.nc = 120
         self.descriptor = np.zeros((self.nr, self.nc))
 
     def compute_descriptor(self, points):
@@ -37,7 +37,7 @@ class SCDescriptor():
         [x, y, z] = points[:, 0], points[:, 1], points[:, 2]
         # z positive
         min_z = np.min(z)
-        z = z - min_z + 1.0
+        z = z - min_z #+ 3.0
 
         # compute columns based on theta
         thetas = np.arctan2(y, x) + np.pi
@@ -45,7 +45,10 @@ class SCDescriptor():
         c = np.clip(c, 0, self.nc - 1)
         # compute rows based on radius
         Rs = np.sqrt(x ** 2 + y ** 2)
-
+        # null mean in radius
+        Rs = Rs - np.mean(Rs, axis=0)
+        min_R = np.min(Rs)
+        Rs = Rs - min_R
         # normalize
         # Rs = self.max_radius*Rs/np.mean(Rs)
         # clip value of distance
@@ -56,22 +59,13 @@ class SCDescriptor():
         r = np.round(self.nr * Rs / self.max_radius)
         r = np.clip(r, 0, self.nr - 1)
 
-        # import matplotlib.pyplot as plt
-        # plt.figure()
-        # plt.scatter(thetas, Rs)
-        # plt.show()
-        #
-        # plt.figure()
-        # plt.scatter(c, r)
-        # plt.show()
-
         # for each z store in the descriptor the max value.
         for i in range(len(points)):
             row = int(r[i])
             col = int(c[i])
             if self.descriptor[row, col] < z[i]:
                 self.descriptor[row, col] = z[i]
-        return self.descriptor
+        return self.descriptor, r, c, z
 
     def maximize_correlation(self, other):
         debug = True
@@ -102,6 +96,40 @@ class SCDescriptor():
         print('Max prob is:', maxprob)
         return yaw_diff, maxprob
 
+    def maximize_correlation2(self, other):
+        """
+        Use a L2 norm
+        """
+        debug = False
+        sc1 = self.descriptor
+        sc2 = other.descriptor
+        corrs = []
+        # caution, computing on [0, 2pi)
+        delta_r = 0
+        for i in range(self.nc-delta_r):
+            # Shift one column sc2 and compute correlation
+            sc2 = np.roll(sc2, 1, axis=1)  # column shift
+            corr = sc1-sc2
+            corr = np.square(corr)
+            corr = np.sum(corr)
+            corrs.append(corr)
+        corrs = np.array(corrs)
+        # normalize to probability. Probability fo yaw being a good correlation
+        probs = corrs/np.sum(corrs)
+
+        if debug:
+            plt.figure()
+            plt.plot(2 * np.pi*np.arange(self.nc-delta_r)/self.nc, probs)
+            # plt.plot(np.arange(self.nc - delta_r), probs)
+            plt.show()
+
+        col_diff = np.argmin(probs)
+        yaw_diff = 2 * np.pi * col_diff / self.nc
+        minprob = np.min(probs)
+        print('Found gamma is: ', yaw_diff)
+        print('Max prob is:', minprob)
+        return yaw_diff, minprob
+
 
 def compute_correlation(sc1, sc2):
     """
@@ -124,7 +152,6 @@ def compute_correlation(sc1, sc2):
         d = 1 - a/(b*c)
         dists.append(d)
     return np.mean(np.array(dists))
-
 
 
 

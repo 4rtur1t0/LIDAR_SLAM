@@ -15,8 +15,8 @@ class DijkstraProjection():
         self.Sigmaij = Sigmaij
         self.poses = []
         self.Sigmas = [None]*self.nnodes
+        # the graph stores the connectivity between the nodes in the graph
         self.graph = np.zeros((self.nnodes, self.nnodes))
-        # self.weights = np.zeros((nnodes, nnodes))
         # In this algorithm, the distance is based on the determinant of the uncertainty between nodes.
         self.dists = np.array([sys.maxsize] * self.nnodes, dtype=float)
         # list of visited/unvisited nodes. All nodes marked as false (not visited)
@@ -250,26 +250,6 @@ class DijkstraProjectionRelative():
         """
         self.graph[i, j] = True
         self.graph[j, i] = True
-        # self.add_rel_transforms(i, j, iTj)
-
-    # def add_rel_transforms(self, i, j, iTj):
-    #     """
-    #     Adds the transformation between node i and node j and viceversa.
-    #     """
-    #     key = str(i) + ',' + str(j)
-    #     self.rel_transforms[key] = iTj
-    #     key = str(j) + ',' + str(i)
-    #     self.rel_transforms[key] = iTj.inv()
-
-    # def get_rel_transform(self, i, j):
-    #     """
-    #     Return the transformation between the node i and node j
-    #     """
-    #     key = str(j) + ',' + str(i)
-    #     try:
-    #         return self.rel_transforms[key]
-    #     except KeyError:
-    #         return None
 
     def is_connected(self, i, j):
         if self.graph[i, j]:
@@ -302,7 +282,6 @@ class DijkstraProjectionRelative():
             th = pose3.rotation().ypr()[0]
             self.poses[i] = np.array([x, y, th])
             i += 1
-
 
     def store_shortest_path(self, source, finish):
         """
@@ -420,7 +399,7 @@ class DijkstraProjectionRelative():
             # for all neighbours, update the distances.
             # the uncertainty matrix at each node (self.Sigmas) is also updated to allow for error propagation.
             self.update_distances(v)
-            self.print()
+            # self.print()
         # stores the shortest path in self.shortest_path as node indexes
         self.store_shortest_path(source=source, finish=finish)
         # source, finish transformation

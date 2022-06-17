@@ -88,7 +88,7 @@ def simulate_observations_SE2(x_gt, observations):
     A series of relative observations are generated from the ground truth solution x_gt
     """
     N = len(observations)
-    edges = []
+    transformations = []
     sx = icp_xyz_sigma
     sy = icp_xyz_sigma
     sth = icp_rpy_sigma
@@ -109,8 +109,8 @@ def simulate_observations_SE2(x_gt, observations):
         # np.random.normal([0, 0, 0], [sx, sy, sth], 1)
         zij[2] = mod_2pi(zij[2])
         Tij = HomogeneousMatrix([zij[0], zij[1], 0], Euler([0, 0, zij[2]]))
-        edges.append(Tij)
-    return edges
+        transformations.append(Tij)
+    return transformations
 
 
 def simulate_observations(associations):
@@ -126,7 +126,9 @@ def simulate_observations(associations):
 def main():
     graphslam = GraphSLAM(icp_noise=ICP_NOISE, prior_noise=PRIOR_NOISE)
     # create the Data Association object
-    dassoc = DataAssociation(graphslam, xi2_th=20.0, icp_noise=ICP_NOISE_DA)
+    dassoc = DataAssociation(graphslam, xi2_th=3.0, icp_noise=ICP_NOISE_DA)
+    # dijkstra_algorithm = DijkstraProjectionRelative(np.diag([icp_xyz_sigma, icp_xyz_sigma, icp_rpy_sigma]))
+    dassoc.dijkstra_algorithm.add_node()
 
     for k in range(1, len(x_gt)):
         # Vertex j is observed from vertex i
@@ -135,25 +137,34 @@ def main():
         atb = simulate_observations_SE2(x_gt=x_gt, observations=[[i, j]])
         # consecutive edges. Adds a new node
         graphslam.add_consecutive_observation(atb[0])
+        # adding nodes to the data association object
+        dassoc.dijkstra_algorithm.add_node()
+        dassoc.dijkstra_algorithm.connect_nodes(i, j)
+
         # now check for possible data associations. Initial set of candidates
-        associations = dassoc.find_initial_candidates()
+        candidates = dassoc.find_initial_candidates()
+
         # simulate observations for each association
-        atbs = simulate_observations(associations)
-        if len(associations) > 2:
-            print('Debug')
-        # filter these associations (Aij, Otsu method based on probability, RANSAC, JCBB. using pairwise compatibility
-        associations = dassoc.filter_data_associations(associations, atbs)
-        # non-consecutive edges for filtered associations
-        # for assoc in associations:
-        for i in range(len(associations)):
+        atbs = simulate_observations_SE2(x_gt=x_gt, observations=candidates)
+        try:
+            # yes, simulate that the first observation is corrupted (only on the loop closing phase)
+            atbs[0] = HomogeneousMatrix(np.eye(4))
+            atbs[3] = HomogeneousMatrix(np.eye(4))
+        except:
+            pass
+        # filter these associations (Based on pairs of joint Mahalanobis distance)
+        candidates, atbs = dassoc.filter_data_associations(candidates, atbs)
+        # adding non-consecutive edges for filtered associations
+        for i in range(len(candidates)):
             # i, j. node j observed from node i
-            graphslam.add_loop_closing_observation(associations[i][0], associations[i][1], atbs[i])
+            graphslam.add_loop_closing_observation(candidates[i][0], candidates[i][1], atbs[i])
         # optimizing whenever non_consecutive observations are performed (loop closing)
-        if len(associations) > 0:
-            graphslam.optimize()
-            graphslam.view_solution2D(skip=1)
+        # if len(candidates) > 0:
+        #     graphslam.optimize()
+        graphslam.optimize()
+        graphslam.view_solution2D(skip=1)
         # or optimizing at every new observation
-        # graphslam.optimize()
+
         # graphslam.view_solution()
     # or optimizing when all information is available
     graphslam.optimize()

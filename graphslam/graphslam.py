@@ -140,10 +140,32 @@ class GraphSLAM():
             i += skip
             print('Pose: ', i, ' (x, y, th): ', pose2, ' det(S): ', np.linalg.det(marginal2))
 
-        # axes.set_xlim3d(-50, 50)
-        # axes.set_ylim3d(-50, 50)
-        # axes.set_zlim3d(-50, 50)
-        plt.pause(0.05)
+        plt.pause(0.01)
+
+    def view_solution2D_fast(self, skip=20):
+        """Print and plot incremental progress of the robot for 2D Pose SLAM using iSAM2.
+        Converting from Pose3 to Pose2.
+        Be careful when converting the marginal
+        """
+        # Print the current estimates computed using iSAM2.
+        print("*" * 50 + f"\nInference after State:\n", self.current_index)
+
+        # Plot the newly updated iSAM2 inference.
+        fig = plt.figure(0)
+        plt.cla()
+
+        i = 0
+        while self.current_estimate.exists(i):
+            pose3 = self.current_estimate.atPose3(i)
+            x = pose3.translation()[0]
+            y = pose3.translation()[1]
+            th = pose3.rotation().ypr()[0]
+            pose2 = gtsam.Pose2(x=x, y=y, theta=th)
+            gtsam_plot.plot_pose2(0, pose2, 1)
+            i += skip
+            print('Pose: ', i, ' (x, y, th): ', pose2)
+
+        plt.pause(0.01)
 
 
     def view_solution(self, skip=20):
@@ -170,7 +192,7 @@ class GraphSLAM():
         axes.set_xlim3d(-50, 50)
         axes.set_ylim3d(-50, 50)
         axes.set_zlim3d(-50, 50)
-        plt.pause(0.05)
+        plt.pause(0.01)
 
     def view_solution_fast(self, skip=1):
         """

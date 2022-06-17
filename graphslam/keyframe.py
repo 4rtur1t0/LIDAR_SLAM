@@ -38,7 +38,7 @@ class KeyFrame():
         self.pointcloud_filtered = None
         self.pointcloud_ground_plane = None
         self.pointcloud_non_ground_plane = None
-        self.max_radius_descriptor = 60
+        self.max_radius_descriptor = 20
         self.scdescriptor = SCDescriptor(max_radius=self.max_radius_descriptor)
         # save the pointcloud for Scan context description
 
@@ -51,10 +51,10 @@ class KeyFrame():
         #                                                                                                 bbox[1],
         #                                                                                                 bbox[2]))
         # self.pointcloud = self.pointcloud.crop(bbox)
-        # self.draw_pointcloud()
         # filter by a max radius to avoid erros in normal computation
-        self.pointcloud_filtered = self.filter_by_radius(self.max_radius)
-        # self.draw_pointcloud()
+        self.pointcloud_filtered = self.filter_by_radius(self.pointcloud.points, self.max_radius)
+
+        # self.pointcloud_descriptor = self.filter_by_radius(self.max_radius_descriptor)
         # downsample pointcloud and save to pointcloud in keyframe
         if self.voxel_downsample_size is not None:
             self.pointcloud_filtered = self.pointcloud_filtered.voxel_down_sample(voxel_size=self.voxel_downsample_size)
@@ -70,8 +70,8 @@ class KeyFrame():
         self.pointcloud_non_ground_plane.estimate_normals(o3d.geometry.KDTreeSearchParamHybrid(radius=self.voxel_size_normals,
                                                                               max_nn=PARAMETERS.max_nn))
 
-    def filter_by_radius(self, max_radius):
-        points = np.asarray(self.pointcloud.points)
+    def filter_by_radius(self, points, max_radius):
+        points = np.asarray(points)
         [x, y, z] = points[:, 0], points[:, 1], points[:, 2]
         r2 = x**2 + y**2
         idx = np.where(r2 < max_radius**2)
@@ -140,7 +140,7 @@ class KeyFrame():
             - B: using non ground planes (rest of the points) tx, ty and gamma are estimated
         caution, initial_transform is a np array.
         """
-        debug = True
+        debug = False
         # if debug:
         #     other.draw_registration_result(self, initial_transform)
 
@@ -149,8 +149,8 @@ class KeyFrame():
             other.pointcloud_ground_plane, self.pointcloud_ground_plane, self.icp_threshold, initial_transform,
             o3d.pipelines.registration.TransformationEstimationPointToPlane())
         print(reg_p2pa)
-        # if debug:
-        #     other.draw_registration_result(self, reg_p2pa.transformation)
+        if debug:
+            other.draw_registration_result(self, reg_p2pa.transformation)
         # compute second transformation using the whole pointclouds. CAUTION: failures in ground plane segmentation
         # do affect this transform if computed with some parts of ground
         reg_p2pb = o3d.pipelines.registration.registration_icp(
@@ -182,51 +182,44 @@ class KeyFrame():
         Two scan context descriptors are found.
         """
         print('Computing global registration using Scan Context')
-        debug = True
-        if debug:
-            other.draw_registration_result(self, np.eye(4))
-            # self.pointcloud.paint_uniform_color([1, 0, 0])
-            # other.pointcloud.paint_uniform_color([0, 0, 1])
-            # o3d.visualization.draw_geometries([self.pointcloud, other.pointcloud])
+        debug = False
+        # if debug:
+        #     other.draw_registration_result(self, np.eye(4))
 
         # sample down points
         # using points that do not belong to ground
-        voxel_down_sample = 0.1
+        voxel_down_sample = 0.2
 
-        pcd1 = self.pointcloud.voxel_down_sample(voxel_size=voxel_down_sample)
-        pcd2 = other.pointcloud.voxel_down_sample(voxel_size=voxel_down_sample)
-        sc1 = self.scdescriptor.compute_descriptor(pcd1.points)
-        sc2 = other.scdescriptor.compute_descriptor(pcd2.points)
+        # pcd1 = self.pointcloud_descriptor.voxel_down_sample(voxel_size=voxel_down_sample)
+        # pcd2 = other.pointcloud_descriptor.voxel_down_sample(voxel_size=voxel_down_sample)
 
-        # pcd1 = self.pointcloud_filtered.voxel_down_sample(voxel_size=voxel_down_sample)
-        # pcd2 = other.pointcloud_filtered.voxel_down_sample(voxel_size=voxel_down_sample)
-        # sc1 = self.scdescriptor.compute_descriptor(pcd1.points)
-        # sc2 = other.scdescriptor.compute_descriptor(pcd2.points)
+        pcd1 = self.filter_by_radius(self.pointcloud_non_ground_plane.points, max_radius=self.scdescriptor.max_radius)
+        pcd2 = self.filter_by_radius(other.pointcloud_non_ground_plane.points, max_radius=self.scdescriptor.max_radius)
 
-        # pcd1 = self.pointcloud_non_ground_plane.voxel_down_sample(voxel_size=voxel_down_sample)
-        # pcd2 = other.pointcloud_non_ground_plane.voxel_down_sample(voxel_size=voxel_down_sample)
-        # sc1 = self.scdescriptor.compute_descriptor(pcd1.points)
-        # sc2 = other.scdescriptor.compute_descriptor(pcd2.points)
+        pcd1 = pcd1.voxel_down_sample(voxel_size=voxel_down_sample)
+        pcd2 = pcd2.voxel_down_sample(voxel_size=voxel_down_sample)
 
-        # pcd1 = self.pointcloud_ground_plane.voxel_down_sample(voxel_size=voxel_down_sample)
-        # pcd2 = other.pointcloud_ground_plane.voxel_down_sample(voxel_size=voxel_down_sample)
-        # sc1 = self.scdescriptor.compute_descriptor(pcd1.points)
-        # sc2 = other.scdescriptor.compute_descriptor(pcd2.points)
+        # if debug:
+        #     o3d.visualization.draw_geometries([pcd1, pcd2])
 
-        if debug:
-            plt.figure()
-            # plt.imshow(sc1, cmap='gray')
-            plt.imshow(sc1)
-            plt.figure()
-            # plt.imshow(sc2, cmap='gray')
-            plt.imshow(sc2)
-            plt.figure()
-            # plt.imshow(sc2, cmap='gray')
-            plt.imshow(sc1-sc2)
+        sc1, r1, c1, z1 = self.scdescriptor.compute_descriptor(pcd1.points)
+        sc2, r2, c2, z2 = other.scdescriptor.compute_descriptor(pcd2.points)
 
-        gamma, prob = self.scdescriptor.maximize_correlation(other.scdescriptor)
+        # if debug:
+        #     fig = plt.figure()
+        #     ax = fig.add_subplot(projection='3d')
+        #     ax.scatter(r1, c1, z1)
+        #     ax.scatter(r2, c2, z2)
+        #     ax.set_xlabel('r')
+        #     ax.set_ylabel('c')
+        #     ax.set_zlabel('Z Label')
+        #     plt.show()
+
+        # gamma1, prob = self.scdescriptor.maximize_correlation(other.scdescriptor)
+        gamma2, prob = self.scdescriptor.maximize_correlation2(other.scdescriptor)
+        # gamma = 1.5
         # assuming a rough SE2 transformation here
-        T = HomogeneousMatrix(np.array([0, 0, 0]), Euler([0, 0, gamma]))
+        T = HomogeneousMatrix(np.array([0, 0, 0]), Euler([0, 0, gamma2]))
 
         if debug:
             other.draw_registration_result(self, T.array)

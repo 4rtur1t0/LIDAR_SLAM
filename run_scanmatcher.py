@@ -120,11 +120,11 @@ def main():
     euroc_read = EurocReader(directory=directory)
     # nmax_scans to limit the number of scans in the experiment
     scan_times, gt_pos, gt_orient = euroc_read.prepare_experimental_data(deltaxy=PARAMETERS.exp_deltaxy, deltath=PARAMETERS.exp_deltath, nmax_scans=None)
-    start = 0
-    end = 100
-    scan_times = scan_times[start:end]
-    gt_pos = gt_pos[start:end]
-    gt_orient = gt_orient[start:end]
+    # start = 0
+    # end = 100
+    # scan_times = scan_times[start:end]
+    # gt_pos = gt_pos[start:end]
+    # gt_orient = gt_orient[start:end]
     # view_pos_data(gt_pos)
 
     measured_transforms = []
@@ -135,6 +135,7 @@ def main():
     keyframe_manager.keyframes[0].pre_process()
     for i in range(1, len(scan_times)):
         print('Adding keyframe and computing transform: ', i, 'out of ', len(scan_times))
+        # caution, preprocessing only the i keyframe!
         keyframe_manager.keyframes[i].pre_process()
         # compute relative motion between scan i and scan i-1 0 1, 1 2...
         atb, rmse = keyframe_manager.compute_transformation_local_registration(i-1, i, method='B')
@@ -145,7 +146,7 @@ def main():
     gt_transforms_relative = compute_homogeneous_transforms_relative(gt_transforms)
     # compare ICP measurements with ground_truth
     eval_errors(gt_transforms_relative, measured_transforms)
-
+    # save to file as a pickle
     save_transforms_to_file(measured_transforms)
 
     # view map with computed transforms

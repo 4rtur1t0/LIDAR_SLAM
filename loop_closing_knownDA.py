@@ -3,6 +3,7 @@ Simple experiment using GTSAM in a GraphSLAM context.
 
 A series of
 """
+from config import PARAMETERS
 from eurocreader.eurocreader import EurocReader
 from graphslam.dataassociation import DataAssociation
 from graphslam.graphslam import GraphSLAM
@@ -14,7 +15,7 @@ import numpy as np
 from tools.homogeneousmatrix import HomogeneousMatrix
 
 
-def perform_data_associations_ground_truth(gt_pos, current_index, delta_index=160, euclidean_distance_threshold=6.5):
+def perform_data_associations_ground_truth(gt_pos, current_index, delta_index=160, euclidean_distance_threshold=3.5):
     candidates = []
     distances = []
     i = current_index-1
@@ -29,7 +30,7 @@ def perform_data_associations_ground_truth(gt_pos, current_index, delta_index=16
 
 def main():
     # Prepare data
-    directory = '/home/arvc/Escritorio/develop/Registration/dos_vueltas_features/'
+    directory = PARAMETERS.directory
     euroc_read = EurocReader(directory=directory)
     scan_times, gt_pos, gt_orient = euroc_read.prepare_experimental_data(deltaxy=0.1, deltath=0.05,
                                                                          nmax_scans=None)
